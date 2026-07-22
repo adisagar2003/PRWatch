@@ -16,12 +16,15 @@ export function Menu({
   });
   return (
     <Box flexDirection="column">
-      {items.map((item, i) => (
-        <Text key={item} color={i === cursor ? 'cyan' : undefined}>
-          {i === cursor ? '❯ ' : '  '}
-          {item}
-        </Text>
-      ))}
+      {items.map((item, i) => {
+        const selected = i === cursor;
+        return (
+          <Text key={item} color={selected ? 'cyan' : undefined} bold={selected} dimColor={!selected}>
+            {selected ? '❯ ' : '  '}
+            {item}
+          </Text>
+        );
+      })}
     </Box>
   );
 }

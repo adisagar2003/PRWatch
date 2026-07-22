@@ -52,6 +52,31 @@ describe('App', () => {
     expect(lastFrame()).toContain('2 repo');
   });
 
+  it('shows per-repo review counts on the live Status screen', async () => {
+    await fs.writeFile(
+      path.join(tmp, 'state.json'),
+      JSON.stringify({
+        lastTickAt: new Date().toISOString(),
+        repos: {
+          'a/b': { watchStartedAt: '2020-01-01T00:00:00.000Z', reviewed: [1, 2, 3], failed: [], retries: { '5': 1 } },
+        },
+      }),
+    );
+
+    const { stdin, lastFrame } = render(
+      <App initialConfig={{ ...DEFAULT_CONFIG, repos: ['a/b'] }} />,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    stdin.write('\r'); // Status is the first menu item
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('daemon:');
+    expect(frame).toContain('a/b');
+    expect(frame).toMatch(/revd/);
+    expect(frame).toMatch(/3/); // reviewed count
+  });
+
   it('shows an error instead of crashing when state.json is corrupt', async () => {
     await fs.writeFile(path.join(tmp, 'state.json'), '{invalid json}');
 

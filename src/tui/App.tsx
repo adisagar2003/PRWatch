@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
-import TextInput from 'ink-text-input';
 import { Menu } from './Menu.js';
 import { Banner } from './Banner.js';
+import { RepoPicker } from './RepoPicker.js';
+import { ui, Panel, Footer, StatusDot } from './ui.js';
 import { saveConfig, type Config, type AgentName } from '../config.js';
-import { loadState } from '../state.js';
+import { loadState, type State } from '../state.js';
 import { detectInstalledAgents } from '../agents/index.js';
 import { checkGhAuth } from '../forge/github.js';
 import { tailLog } from '../daemon/log.js';
@@ -32,10 +33,24 @@ export function App({ initialConfig }: { initialConfig: Config }) {
   return (
     <Box flexDirection="column" padding={1}>
       <Banner />
-      <Text bold color="magenta">
-        prwatch — local PR reviewer ({config.repos.length} repo{config.repos.length === 1 ? '' : 's'} watched, agent: {config.agent})
+      <Box marginTop={1}>
+        <Text>
+          <Text bold color={ui.accent}>
+            prwatch
+          </Text>
+          <Text dimColor> · local PR reviewer</Text>
+        </Text>
+      </Box>
+      <Text dimColor>
+        {config.repos.length} repo{config.repos.length === 1 ? '' : 's'} watched · agent:{' '}
+        <Text color={ui.info}>{config.agent}</Text>
       </Text>
-      {message !== '' && <Text color="yellow">{message}</Text>}
+      {message !== '' && (
+        <Box marginTop={1}>
+          <Text color={ui.warn}>⚠ {message}</Text>
+        </Box>
+      )}
+      <Box marginTop={1} flexDirection="column">
       {screen === 'menu' && (
         <Menu
           items={MENU_ITEMS}
@@ -49,7 +64,7 @@ export function App({ initialConfig }: { initialConfig: Config }) {
           }}
         />
       )}
-      {screen === 'status' && <StatusScreen />}
+      {screen === 'status' && <StatusScreen config={config} />}
       {screen === 'repos' && (
         <ReposScreen
           repos={config.repos}
@@ -58,7 +73,8 @@ export function App({ initialConfig }: { initialConfig: Config }) {
         />
       )}
       {screen === 'repos-add' && (
-        <AddRepoScreen
+        <RepoPicker
+          existing={config.repos}
           onDone={(repo) => {
             if (repo && !config.repos.includes(repo)) update({ repos: [...config.repos, repo] });
             setScreen('repos');
@@ -74,41 +90,128 @@ export function App({ initialConfig }: { initialConfig: Config }) {
         />
       )}
       {screen === 'service' && <ServiceScreen onDone={(msg) => { setMessage(msg); setScreen('menu'); }} />}
-      {screen !== 'menu' && <Text dimColor>esc: back to menu</Text>}
+      </Box>
+      {screen === 'menu' ? (
+        <Footer hints={[['↑↓', 'navigate'], ['⏎', 'select']]} />
+      ) : (
+        <Footer hints={[['↑↓', 'navigate'], ['⏎', 'select'], ['esc', 'back']]} />
+      )}
     </Box>
   );
 }
 
-function StatusScreen() {
+const REFRESH_MS = 2000;
+
+function agoLabel(iso: string): string {
+  const secs = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+  if (secs < 90) return `${secs}s ago`;
+  const mins = Math.round(secs / 60);
+  if (mins < 90) return `${mins}m ago`;
+  return `${Math.round(mins / 60)}h ago`;
+}
+
+function StatusScreen({ config }: { config: Config }) {
   const [ghOk, setGhOk] = useState<boolean | null>(null);
-  const [lastTick, setLastTick] = useState<string | null>(null);
+  const [state, setState] = useState<State | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // gh auth is slow and rarely changes — check it once.
   useEffect(() => {
     checkGhAuth()
       .then(setGhOk)
       .catch((e) => setError((e as Error).message));
-    loadState()
-      .then((s) => setLastTick(s.lastTickAt))
-      .catch((e) => setError((e as Error).message));
-    tailLog(10)
-      .then(setLogLines)
-      .catch((e) => setError((e as Error).message));
   }, []);
 
+  // Poll state + log while the screen is open; clear the timer on unmount.
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      loadState()
+        .then((s) => {
+          if (!alive) return;
+          setState(s);
+          setError(null);
+        })
+        .catch((e) => alive && setError((e as Error).message));
+      tailLog(10)
+        .then((l) => alive && setLogLines(l))
+        .catch(() => {});
+    };
+    refresh();
+    const id = setInterval(refresh, REFRESH_MS);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  const lastTick = state?.lastTickAt ?? null;
+  // Consider the daemon "running" if it ticked within one poll interval + slack.
+  const running =
+    lastTick !== null && Date.now() - Date.parse(lastTick) < config.pollIntervalMinutes * 60_000 + 30_000;
+
   return (
-    <Box flexDirection="column">
-      {error !== null && <Text color="red">{error}</Text>}
-      <Text>gh auth: {ghOk === null ? '…' : ghOk ? 'OK' : 'NOT LOGGED IN — run `gh auth login`'}</Text>
-      <Text>last daemon tick: {lastTick ?? 'never (is `prw daemon` running?)'}</Text>
-      <Text bold>recent log:</Text>
+    <Panel title="Status">
+      {error !== null && <Text color={ui.error}>⚠ {error}</Text>}
+      <Text>
+        <StatusDot ok={running} /> daemon:{' '}
+        {lastTick === null
+          ? 'never ticked (is `prw daemon` running?)'
+          : running
+            ? `running (tick ${agoLabel(lastTick)})`
+            : `idle/stopped (last tick ${agoLabel(lastTick)})`}
+      </Text>
+      <Text>
+        <StatusDot ok={ghOk} /> gh auth:{' '}
+        {ghOk === null ? 'checking…' : ghOk ? 'OK' : 'NOT LOGGED IN — run `gh auth login`'}
+      </Text>
+
+      <Box marginTop={1}>
+        <Text bold color={ui.info}>
+          repos
+        </Text>
+      </Box>
+      <RepoTable config={config} state={state} />
+
+      <Box marginTop={1}>
+        <Text bold color={ui.info}>
+          recent log <Text dimColor>· live</Text>
+        </Text>
+      </Box>
       {logLines.length === 0 && <Text dimColor>(empty)</Text>}
       {logLines.map((l, i) => (
         <Text key={i} dimColor>
           {l}
         </Text>
       ))}
+    </Panel>
+  );
+}
+
+function RepoTable({ config, state }: { config: Config; state: State | null }) {
+  if (config.repos.length === 0) return <Text dimColor>(no repos watched)</Text>;
+  const nameWidth = Math.min(40, Math.max(4, ...config.repos.map((r) => r.length)));
+  const cell = (n: number) => String(n).padStart(5);
+  return (
+    <Box flexDirection="column">
+      <Text dimColor>
+        {'repo'.padEnd(nameWidth)} {'revd'.padStart(5)} {'fail'.padStart(5)} {'retry'.padStart(5)}
+      </Text>
+      {config.repos.map((repo) => {
+        const rs = state?.repos[repo];
+        const pending = rs ? Object.keys(rs.retries).length : 0;
+        return (
+          <Text key={repo}>
+            {repo.slice(0, nameWidth).padEnd(nameWidth)}{' '}
+            <Text color={ui.success}>{cell(rs?.reviewed.length ?? 0)}</Text>{' '}
+            <Text color={(rs?.failed.length ?? 0) > 0 ? ui.error : undefined}>
+              {cell(rs?.failed.length ?? 0)}
+            </Text>{' '}
+            <Text color={pending > 0 ? ui.warn : undefined}>{cell(pending)}</Text>
+          </Text>
+        );
+      })}
     </Box>
   );
 }
@@ -124,8 +227,8 @@ function ReposScreen({
 }) {
   const items = [...repos.map((r) => `remove ${r}`), 'add a repo'];
   return (
-    <Box flexDirection="column">
-      <Text bold>Watched repos (enter to remove):</Text>
+    <Panel title="Watched repos">
+      <Text dimColor>enter to remove a repo, or add a new one</Text>
       <Menu
         items={items}
         onSelect={(item) => {
@@ -133,17 +236,7 @@ function ReposScreen({
           else onRemove(item.replace('remove ', ''));
         }}
       />
-    </Box>
-  );
-}
-
-function AddRepoScreen({ onDone }: { onDone: (repo: string) => void }) {
-  const [value, setValue] = useState('');
-  return (
-    <Box>
-      <Text>owner/name: </Text>
-      <TextInput value={value} onChange={setValue} onSubmit={(v) => onDone(v.trim())} />
-    </Box>
+    </Panel>
   );
 }
 
@@ -157,15 +250,28 @@ function AgentScreen({ onPick }: { onPick: (name: AgentName) => void }) {
       .catch((e) => setError((e as Error).message));
   }, []);
 
-  if (error !== null) return <Text color="red">agent detection failed: {error}</Text>;
-  if (installed === null) return <Text>detecting installed agents…</Text>;
+  if (error !== null)
+    return (
+      <Panel title="Agent" borderColor={ui.error}>
+        <Text color={ui.error}>⚠ agent detection failed: {error}</Text>
+      </Panel>
+    );
+  if (installed === null)
+    return (
+      <Panel title="Agent">
+        <Text dimColor>detecting installed agents…</Text>
+      </Panel>
+    );
   if (installed.length === 0)
-    return <Text color="red">No agents found. Install claude, codex, or opencode first.</Text>;
+    return (
+      <Panel title="Agent" borderColor={ui.error}>
+        <Text color={ui.error}>⚠ No agents found. Install claude, codex, or opencode first.</Text>
+      </Panel>
+    );
   return (
-    <Box flexDirection="column">
-      <Text bold>Pick review agent:</Text>
+    <Panel title="Pick review agent">
       <Menu items={installed} onSelect={(item) => onPick(item as AgentName)} />
-    </Box>
+    </Panel>
   );
 }
 
@@ -176,5 +282,9 @@ function ServiceScreen({ onDone }: { onDone: (msg: string) => void }) {
       .then((p) => onDone(`service installed: ${p}`))
       .catch((e) => onDone(`service install failed: ${(e as Error).message}`));
   }, []);
-  return <Text>installing service…</Text>;
+  return (
+    <Panel title="Install service">
+      <Text dimColor>installing service…</Text>
+    </Panel>
+  );
 }
