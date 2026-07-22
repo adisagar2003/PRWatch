@@ -64,4 +64,13 @@ describe('config', () => {
     await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ agentTimeoutMinutes: -1 }));
     await expect(loadConfig()).rejects.toThrow(/invalid config at.*agentTimeoutMinutes/);
   });
+
+  it('writes atomically: no leftover .tmp file, content round-trips', async () => {
+    const c = { ...DEFAULT_CONFIG, repos: ['a/b'] };
+    await saveConfig(c);
+    const entries = await fs.readdir(tmp);
+    expect(entries).toContain('config.json');
+    expect(entries.some((e) => e.endsWith('.tmp'))).toBe(false);
+    expect(await loadConfig()).toEqual(c);
+  });
 });

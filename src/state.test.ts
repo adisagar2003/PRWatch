@@ -63,4 +63,13 @@ describe('state', () => {
 
     await expect(loadState()).rejects.toThrow(/invalid state at.*state\.json/);
   });
+
+  it('writes atomically: no leftover .tmp file, content round-trips', async () => {
+    const s = { lastTickAt: '2026-07-21T00:00:00.000Z', repos: {} };
+    await saveState(s);
+    const entries = await fs.readdir(tmp);
+    expect(entries).toContain('state.json');
+    expect(entries.some((e) => e.endsWith('.tmp'))).toBe(false);
+    expect(await loadState()).toEqual(s);
+  });
 });

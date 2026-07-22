@@ -30,7 +30,10 @@ export async function loadState(): Promise<State> {
 
 export async function saveState(s: State): Promise<void> {
   await fs.mkdir(prwatchHome(), { recursive: true });
-  await fs.writeFile(statePath(), JSON.stringify(s, null, 2) + '\n');
+  const target = statePath();
+  const tmp = `${target}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(s, null, 2) + '\n');
+  await fs.rename(tmp, target);
 }
 
 export function ensureRepoState(s: State, repo: string, now: Date): RepoState {

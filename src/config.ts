@@ -67,5 +67,8 @@ export async function loadConfig(): Promise<Config> {
 
 export async function saveConfig(c: Config): Promise<void> {
   await fs.mkdir(prwatchHome(), { recursive: true });
-  await fs.writeFile(configPath(), JSON.stringify(c, null, 2) + '\n');
+  const target = configPath();
+  const tmp = `${target}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(c, null, 2) + '\n');
+  await fs.rename(tmp, target);
 }
