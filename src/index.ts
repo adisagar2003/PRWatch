@@ -6,7 +6,8 @@ const [, , cmd, sub] = process.argv;
 if (cmd === 'daemon') {
   await startDaemon();
 } else if (cmd === 'service' && sub === 'install') {
-  console.log('service install: implemented in a later task');
+  const { installService } = await import('./service.js');
+  console.log(`service installed: ${await installService()}`);
 } else {
   console.log('TUI: implemented in a later task. Run `prw daemon` to start the watcher.');
 }
