@@ -51,7 +51,12 @@ export class GitHubForge implements ForgeAdapter {
 
   async clone(repo: string, pr: number, dir: string): Promise<void> {
     await this.exec('gh', ['repo', 'clone', repo, dir, '--', '--depth', '50']);
-    await this.exec('gh', ['pr', 'checkout', String(pr)], { cwd: dir });
+    // Not `gh pr checkout`: shallow clones are implicitly single-branch, so it
+    // cannot create a tracking branch. refs/pull/N/head also covers fork PRs.
+    await this.exec('git', ['fetch', '--depth', '50', 'origin', `pull/${pr}/head:prwatch-pr`], {
+      cwd: dir,
+    });
+    await this.exec('git', ['checkout', 'prwatch-pr'], { cwd: dir });
   }
 
   async hasMarkerComment(repo: string, pr: number): Promise<boolean> {
