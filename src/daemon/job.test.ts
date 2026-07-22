@@ -78,6 +78,18 @@ describe('runReviewJob', () => {
     expect(forge.postComment).not.toHaveBeenCalled();
   });
 
+  it('resolves failed (not rejects) when the marker check throws', async () => {
+    const forge = fakeForge({
+      hasMarkerComment: async () => { throw new Error('api down'); },
+      clone: vi.fn(),
+    });
+    await expect(
+      runReviewJob(deps(forge, fakeAgent(async () => LONG_REVIEW)), 'a/b', pr),
+    ).resolves.toBe('failed');
+    expect(forge.clone).not.toHaveBeenCalled();
+    expect(forge.postComment).not.toHaveBeenCalled();
+  });
+
   it('uses the repo rubric override when the clone contains .prwatch/rubric.md', async () => {
     let seenPrompt = '';
     const forge = fakeForge({

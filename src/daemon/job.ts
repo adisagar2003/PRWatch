@@ -21,15 +21,16 @@ const MIN_OUTPUT_CHARS = 50;
 export async function runReviewJob(deps: JobDeps, repo: string, pr: PR): Promise<JobResult> {
   const { forge, agent, cacheRoot, timeoutMs, log } = deps;
 
-  if (await forge.hasMarkerComment(repo, pr.number)) {
-    log(`skip ${repo}#${pr.number}: prwatch comment already exists`);
-    return 'skipped-existing';
-  }
-
   const dir = path.join(cacheRoot, `${repo.replace('/', '-')}-${pr.number}`);
-  await fs.mkdir(cacheRoot, { recursive: true });
 
   try {
+    if (await forge.hasMarkerComment(repo, pr.number)) {
+      log(`skip ${repo}#${pr.number}: prwatch comment already exists`);
+      return 'skipped-existing';
+    }
+
+    await fs.mkdir(cacheRoot, { recursive: true });
+
     log(`reviewing ${repo}#${pr.number} "${pr.title}" with ${agent.name}`);
     await forge.clone(repo, pr.number, dir);
     const rubric = await resolveRubric(dir);
@@ -45,6 +46,10 @@ export async function runReviewJob(deps: JobDeps, repo: string, pr: PR): Promise
     log(`FAILED ${repo}#${pr.number}: ${(e as Error).message}`);
     return 'failed';
   } finally {
-    await fs.rm(dir, { recursive: true, force: true });
+    try {
+      await fs.rm(dir, { recursive: true, force: true });
+    } catch (e) {
+      log(`cleanup failed for ${dir}: ${(e as Error).message}`);
+    }
   }
 }
