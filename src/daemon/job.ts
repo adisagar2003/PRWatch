@@ -18,6 +18,12 @@ export interface JobDeps {
 
 const MIN_OUTPUT_CHARS = 50;
 
+const PRWATCH_URL = 'https://github.com/adisagar2003/PRWatch';
+
+function attribution(agentName: string): string {
+  return `\n\n---\n👁️🌀 *By [PRWatch](${PRWATCH_URL}) · reviewed with \`${agentName}\`*`;
+}
+
 export async function runReviewJob(deps: JobDeps, repo: string, pr: PR): Promise<JobResult> {
   const { forge, agent, cacheRoot, timeoutMs, log } = deps;
 
@@ -39,7 +45,7 @@ export async function runReviewJob(deps: JobDeps, repo: string, pr: PR): Promise
     if (output.length < MIN_OUTPUT_CHARS) {
       throw new Error(`agent output too short (${output.length} chars)`);
     }
-    await forge.postComment(repo, pr.number, `${MARKER}\n${output}`);
+    await forge.postComment(repo, pr.number, `${MARKER}\n${output}${attribution(agent.name)}`);
     log(`posted review for ${repo}#${pr.number}`);
     return 'posted';
   } catch (e) {

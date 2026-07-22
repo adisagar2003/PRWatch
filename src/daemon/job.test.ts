@@ -53,6 +53,16 @@ describe('runReviewJob', () => {
     await expect(fs.readdir(path.join(tmp, 'cache'))).resolves.toEqual([]);
   });
 
+  it('appends the PRWatch attribution footer naming the agent', async () => {
+    const forge = fakeForge();
+    await runReviewJob(deps(forge, fakeAgent(async () => LONG_REVIEW)), 'a/b', pr);
+    const body = (forge.postComment as ReturnType<typeof vi.fn>).mock.calls[0][2] as string;
+    expect(body).toContain('👁️🌀');
+    expect(body).toContain('By [PRWatch](https://github.com/adisagar2003/PRWatch)');
+    expect(body).toContain('`claude`');
+    expect(body.startsWith(MARKER)).toBe(true); // footer must not displace the marker
+  });
+
   it('skips when a marked comment already exists (no clone made)', async () => {
     const forge = fakeForge({ hasMarkerComment: async () => true, clone: vi.fn() });
     const result = await runReviewJob(deps(forge, fakeAgent(async () => LONG_REVIEW)), 'a/b', pr);
