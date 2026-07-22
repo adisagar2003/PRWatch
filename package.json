@@ -1,0 +1,28 @@
+{
+  "name": "prwatch",
+  "version": "0.1.0",
+  "description": "Local daemon that reviews your new GitHub PRs with your own AI agent (claude/codex/opencode). Zero CI cost.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "prw": "dist/index.js" },
+  "files": ["dist", "README.md"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "ink": "^5.0.1",
+    "ink-text-input": "^6.0.0",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "ink-testing-library": "^4.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "vitest": "^3.0.0"
+  }
+}
