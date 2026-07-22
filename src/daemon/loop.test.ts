@@ -74,6 +74,26 @@ describe('tick', () => {
     expect(state.repos['a/b'].retries['3']).toBe(1);
   });
 
+  it('exposes the in-flight review as currentJob and clears it afterwards', async () => {
+    const forge = fakeForge([mkPr(2, '2026-07-22T00:00:00Z')]);
+    const state: State = { lastTickAt: null, repos: {} };
+    let duringReview: State['currentJob'];
+    const spyAgent: AgentAdapter = {
+      name: 'claude',
+      isInstalled: async () => true,
+      review: async () => {
+        duringReview = structuredClone(state.currentJob);
+        return LONG_REVIEW;
+      },
+    };
+    const deps = makeDeps(forge, spyAgent, state);
+    await tick(deps);
+    expect(duringReview).toMatchObject({ repo: 'a/b', pr: 2, agent: 'claude' });
+    expect(state.currentJob).toBeNull();
+    // persisted before the agent ran, so the TUI can see it
+    expect(deps.saveState.mock.calls.length).toBeGreaterThanOrEqual(3);
+  });
+
   it('survives a forge listing error and still stamps lastTickAt', async () => {
     const forge = fakeForge([]);
     forge.listOpenPRs = async () => { throw new Error('rate limited'); };

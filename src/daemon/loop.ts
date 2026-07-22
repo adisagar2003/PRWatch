@@ -38,7 +38,10 @@ export async function tick(deps: TickDeps): Promise<void> {
       continue;
     }
     for (const pr of prsNeedingReview(prs, rs)) {
+      state.currentJob = { repo, pr: pr.number, agent: agent.name, startedAt: now().toISOString() };
+      await saveState(state);
       const result = await runReviewJob({ forge, agent, cacheRoot, timeoutMs, log }, repo, pr);
+      state.currentJob = null;
       if (result === 'failed') recordFailure(rs, pr.number);
       else recordReviewed(rs, pr.number);
       await saveState(state);
