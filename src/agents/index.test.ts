@@ -48,6 +48,16 @@ describe('agent adapters', () => {
     await expect(agent.review({ cwd: tmp, prompt: 'x', timeoutMs: 300 })).rejects.toThrow(/timeout/);
   }, 10_000);
 
+  it('kills the whole process tree on timeout', async () => {
+    const pidFile = path.join(tmp, 'grandchild.pid');
+    const bin = await writeScript('forker', `sleep 30 &\necho $! > ${pidFile}\nwait`);
+    const agent = makeAgent('claude', bin, (p) => [p]);
+    await expect(agent.review({ cwd: tmp, prompt: 'x', timeoutMs: 500 })).rejects.toThrow(/timeout/);
+    await new Promise((r) => setTimeout(r, 200)); // let SIGKILL land
+    const pid = Number((await fs.readFile(pidFile, 'utf8')).trim());
+    expect(() => process.kill(pid, 0)).toThrow(); // ESRCH: grandchild is gone
+  }, 10_000);
+
   it('isInstalled is false for a missing binary', async () => {
     const agent = makeAgent('claude', 'definitely-not-a-real-binary-xyz', (p) => [p]);
     expect(await agent.isInstalled()).toBe(false);

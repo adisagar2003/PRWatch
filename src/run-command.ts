@@ -6,14 +6,22 @@ export function runCommand(
   opts: { cwd?: string; timeoutMs: number },
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { cwd: opts.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(bin, args, {
+      cwd: opts.cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+    });
     let out = '';
     let err = '';
     let settled = false;
 
     const timer = setTimeout(() => {
       settled = true;
-      child.kill('SIGKILL');
+      try {
+        process.kill(-child.pid!, 'SIGKILL');
+      } catch {
+        child.kill('SIGKILL');
+      }
       reject(new Error(`${bin} timeout after ${opts.timeoutMs}ms`));
     }, opts.timeoutMs);
 
