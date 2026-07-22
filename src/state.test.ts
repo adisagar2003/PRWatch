@@ -64,6 +64,11 @@ describe('state', () => {
     await expect(loadState()).rejects.toThrow(/invalid state at.*state\.json/);
   });
 
+  it('rejects state.json with valid JSON but wrong shape', async () => {
+    await fs.writeFile(path.join(tmp, 'state.json'), '{}');
+    await expect(loadState()).rejects.toThrow(/invalid state/);
+  });
+
   it('writes atomically: no leftover .tmp file, content round-trips', async () => {
     const s = { lastTickAt: '2026-07-21T00:00:00.000Z', repos: {} };
     await saveState(s);

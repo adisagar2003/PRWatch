@@ -15,9 +15,27 @@ export interface State {
 
 export const MAX_ATTEMPTS = 3;
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function validateState(parsed: unknown): State {
+  if (!isPlainObject(parsed)) {
+    throw new Error('state must be an object');
+  }
+  if (typeof parsed.lastTickAt !== 'string' && parsed.lastTickAt !== null) {
+    throw new Error('lastTickAt must be a string or null');
+  }
+  if (!isPlainObject(parsed.repos)) {
+    throw new Error('repos must be an object');
+  }
+  return parsed as unknown as State;
+}
+
 export async function loadState(): Promise<State> {
   try {
-    return JSON.parse(await fs.readFile(statePath(), 'utf8'));
+    const raw = JSON.parse(await fs.readFile(statePath(), 'utf8'));
+    return validateState(raw);
   } catch (err) {
     const error = err as NodeJS.ErrnoException;
     if (error.code === 'ENOENT') {
