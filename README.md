@@ -1,4 +1,5 @@
-# prwatch
+# PRWATCH
+<img width="1502" height="726" alt="image" src="https://github.com/user-attachments/assets/4c1b8abc-f259-4fc9-955a-3e49e5c229df" />
 
 Review your own pull requests with the AI agent you already pay for — locally, with zero CI cost.
 
