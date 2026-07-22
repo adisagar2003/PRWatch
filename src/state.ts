@@ -8,9 +8,18 @@ export interface RepoState {
   retries: Record<string, number>;
 }
 
+export interface CurrentJob {
+  repo: string;
+  pr: number;
+  agent: string;
+  startedAt: string;
+}
+
 export interface State {
   lastTickAt: string | null;
   repos: Record<string, RepoState>;
+  /** The review the daemon is running right now; null/absent when idle. */
+  currentJob?: CurrentJob | null;
 }
 
 export const MAX_ATTEMPTS = 3;
@@ -28,6 +37,13 @@ function validateState(parsed: unknown): State {
   }
   if (!isPlainObject(parsed.repos)) {
     throw new Error('repos must be an object');
+  }
+  if (
+    parsed.currentJob !== undefined &&
+    parsed.currentJob !== null &&
+    !isPlainObject(parsed.currentJob)
+  ) {
+    throw new Error('currentJob must be an object or null');
   }
   return parsed as unknown as State;
 }

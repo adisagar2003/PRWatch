@@ -69,6 +69,28 @@ describe('state', () => {
     await expect(loadState()).rejects.toThrow(/invalid state/);
   });
 
+  it('round-trips currentJob and treats it as optional', async () => {
+    const withJob = {
+      lastTickAt: null,
+      repos: {},
+      currentJob: { repo: 'a/b', pr: 5, agent: 'claude', startedAt: '2026-07-22T00:00:00.000Z' },
+    };
+    await saveState(withJob);
+    expect(await loadState()).toEqual(withJob);
+
+    // older state files without the field stay valid
+    await fs.writeFile(path.join(tmp, 'state.json'), JSON.stringify({ lastTickAt: null, repos: {} }));
+    await expect(loadState()).resolves.toEqual({ lastTickAt: null, repos: {} });
+  });
+
+  it('rejects a currentJob of the wrong type', async () => {
+    await fs.writeFile(
+      path.join(tmp, 'state.json'),
+      JSON.stringify({ lastTickAt: null, repos: {}, currentJob: 5 }),
+    );
+    await expect(loadState()).rejects.toThrow(/invalid state.*currentJob/);
+  });
+
   it('writes atomically: no leftover .tmp file, content round-trips', async () => {
     const s = { lastTickAt: '2026-07-21T00:00:00.000Z', repos: {} };
     await saveState(s);
