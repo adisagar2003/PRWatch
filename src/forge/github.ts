@@ -49,6 +49,11 @@ export class GitHubForge implements ForgeAdapter {
     }));
   }
 
+  async isOpen(repo: string, pr: number): Promise<boolean> {
+    const { stdout } = await this.exec('gh', ['api', `repos/${repo}/pulls/${pr}`]);
+    return (JSON.parse(stdout) as { state: string }).state === 'open';
+  }
+
   async clone(repo: string, pr: number, dir: string): Promise<void> {
     await this.exec('gh', ['repo', 'clone', repo, dir, '--', '--depth', '50']);
     // Not `gh pr checkout`: shallow clones are implicitly single-branch, so it

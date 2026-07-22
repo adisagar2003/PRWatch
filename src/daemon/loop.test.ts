@@ -30,6 +30,7 @@ function fakeForge(prs: PR[]): ForgeAdapter {
   return {
     name: 'fake',
     listOpenPRs: async () => prs,
+    isOpen: async () => true,
     clone: async (_r, _p, dir) => { await fs.mkdir(dir, { recursive: true }); },
     hasMarkerComment: async () => false,
     postComment: vi.fn(async () => {}),
