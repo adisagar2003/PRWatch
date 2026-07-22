@@ -2,7 +2,7 @@ import { ensureDirs, cacheDir } from '../paths.js';
 import { loadConfig, type Config } from '../config.js';
 import {
   loadState, saveState as persistState, ensureRepoState,
-  recordReviewed, recordFailure, type State,
+  recordReviewed, recordFailure, clearStaleCurrentJob, clearCurrentJobSync, type State,
 } from '../state.js';
 import { ensureHomeRubric } from '../rubric.js';
 import { GitHubForge, checkGhAuth } from '../forge/github.js';
@@ -65,9 +65,13 @@ export async function startDaemon(): Promise<never> {
     process.exit(1);
   }
 
+  // A previous run may have died mid-review (crash, kill -9): heal the marker.
+  await clearStaleCurrentJob();
+
   const shutdown = (signal: 'SIGINT' | 'SIGTERM') => {
     log(`daemon stopping (${signal})`);
     killActiveProcessGroups();
+    clearCurrentJobSync();
     process.exit(signal === 'SIGINT' ? 130 : 143);
   };
   process.on('SIGINT', () => shutdown('SIGINT'));

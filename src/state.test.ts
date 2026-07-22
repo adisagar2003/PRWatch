@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { loadState, saveState, ensureRepoState, recordReviewed, recordFailure, MAX_ATTEMPTS } from './state.js';
+import {
+  loadState, saveState, ensureRepoState, recordReviewed, recordFailure,
+  clearStaleCurrentJob, clearCurrentJobSync, MAX_ATTEMPTS,
+} from './state.js';
 
 let tmp: string;
 
@@ -89,6 +92,50 @@ describe('state', () => {
       JSON.stringify({ lastTickAt: null, repos: {}, currentJob: 5 }),
     );
     await expect(loadState()).rejects.toThrow(/invalid state.*currentJob/);
+  });
+
+  it('rejects a currentJob with missing or wrongly-typed fields', async () => {
+    await fs.writeFile(
+      path.join(tmp, 'state.json'),
+      JSON.stringify({ lastTickAt: null, repos: {}, currentJob: {} }),
+    );
+    await expect(loadState()).rejects.toThrow(/invalid state.*currentJob\.repo/);
+
+    await fs.writeFile(
+      path.join(tmp, 'state.json'),
+      JSON.stringify({
+        lastTickAt: null,
+        repos: {},
+        currentJob: { repo: 'a/b', pr: '5', agent: 'claude', startedAt: 'now' },
+      }),
+    );
+    await expect(loadState()).rejects.toThrow(/invalid state.*currentJob\.pr/);
+  });
+
+  it('clearStaleCurrentJob nulls a leftover job and is a no-op without a state file', async () => {
+    await saveState({
+      lastTickAt: null,
+      repos: {},
+      currentJob: { repo: 'a/b', pr: 5, agent: 'claude', startedAt: '2026-07-22T00:00:00.000Z' },
+    });
+    await clearStaleCurrentJob();
+    expect((await loadState()).currentJob).toBeNull();
+
+    await fs.rm(path.join(tmp, 'state.json'));
+    await expect(clearStaleCurrentJob()).resolves.toBeUndefined();
+  });
+
+  it('clearCurrentJobSync nulls a leftover job synchronously and never throws', async () => {
+    await saveState({
+      lastTickAt: null,
+      repos: {},
+      currentJob: { repo: 'a/b', pr: 5, agent: 'claude', startedAt: '2026-07-22T00:00:00.000Z' },
+    });
+    clearCurrentJobSync();
+    expect((await loadState()).currentJob).toBeNull();
+
+    await fs.rm(path.join(tmp, 'state.json'));
+    expect(() => clearCurrentJobSync()).not.toThrow();
   });
 
   it('writes atomically: no leftover .tmp file, content round-trips', async () => {
