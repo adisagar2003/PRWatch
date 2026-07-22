@@ -45,9 +45,13 @@ prwatch fences the PR title/description inside `<untrusted-pr-content>` tags in 
 
 Everything lives in `~/.prwatch/`: `config.json`, `state.json`, `rubric.md`, `logs/`, `cache/` (empty between reviews).
 
-## Helper: fuzzy-find your repos
+## Finding repos to watch
 
-`repo-find.sh` lists your GitHub repos and lets you fuzzy-search them (handy for picking which repos to watch). Requires `gh` (logged in) and `fzf`.
+If you installed prwatch, the TUI has this built in: **Repos → add a repo** fuzzy-searches your GitHub repos live (type to filter, enter to add) — no extra tools needed.
+
+### `repo-find.sh` (source checkout only)
+
+There's also a standalone shell helper for use outside the TUI. It is **not bundled in the npm package** — it only ships in a source checkout of this repo (`git clone`). Requires `gh` (logged in) and `fzf`.
 
 ```sh
 ./repo-find.sh          # pick a repo, print its URL
@@ -56,7 +60,7 @@ Everything lives in `~/.prwatch/`: `config.json`, `state.json`, `rubric.md`, `lo
 ./repo-find.sh view     # pick a repo, show its details in the terminal
 ```
 
-A live preview pane shows `gh repo view` details for whatever you're hovering. The repo list is cached for 10 minutes (in your temp dir) so repeat runs are fast. Fetches up to 300 repos by default — raise it with `REPO_LIMIT=500 ./repo-find.sh`.
+A live preview pane shows `gh repo view` details for whatever you're hovering. The repo list is cached for 10 minutes under `${XDG_CACHE_HOME:-~/.cache}/prwatch/` so repeat runs are fast. Fetches up to 300 repos by default — raise it with `REPO_LIMIT=500 ./repo-find.sh`.
 
 ## License
 

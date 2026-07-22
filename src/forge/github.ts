@@ -25,6 +25,23 @@ export async function checkGhAuth(exec: Exec = defaultExec): Promise<boolean> {
   }
 }
 
+/** List the authenticated user's repos as "owner/name", newest-updated first. */
+export async function listUserRepos(
+  limit = 300,
+  exec: Exec = defaultExec,
+): Promise<string[]> {
+  const { stdout } = await exec('gh', [
+    'repo',
+    'list',
+    '--limit',
+    String(limit),
+    '--json',
+    'nameWithOwner',
+  ]);
+  const raw = JSON.parse(stdout) as Array<{ nameWithOwner: string }>;
+  return raw.map((r) => r.nameWithOwner);
+}
+
 export class GitHubForge implements ForgeAdapter {
   name = 'github';
 
