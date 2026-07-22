@@ -9,5 +9,6 @@ if (cmd === 'daemon') {
   const { installService } = await import('./service.js');
   console.log(`service installed: ${await installService()}`);
 } else {
-  console.log('TUI: implemented in a later task. Run `prw daemon` to start the watcher.');
+  const { runTui } = await import('./tui/run.js');
+  await runTui();
 }
