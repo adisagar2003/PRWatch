@@ -27,6 +27,7 @@ function fakeForge(over: Partial<ForgeAdapter> = {}): ForgeAdapter {
   return {
     name: 'fake',
     listOpenPRs: async () => [],
+    isOpen: async () => true,
     clone: async (_repo, _pr, dir) => { await fs.mkdir(dir, { recursive: true }); },
     hasMarkerComment: async () => false,
     postComment: vi.fn(async () => {}),
@@ -98,6 +99,26 @@ describe('runReviewJob', () => {
     ).resolves.toBe('failed');
     expect(forge.clone).not.toHaveBeenCalled();
     expect(forge.postComment).not.toHaveBeenCalled();
+  });
+
+  it('skips a PR that is no longer open without cloning or commenting', async () => {
+    const forge = fakeForge({ isOpen: async () => false, clone: vi.fn() });
+    const result = await runReviewJob(deps(forge, fakeAgent(async () => LONG_REVIEW)), 'a/b', pr);
+    expect(result).toBe('skipped-closed');
+    expect(forge.clone).not.toHaveBeenCalled();
+    expect(forge.postComment).not.toHaveBeenCalled();
+  });
+
+  it('does not comment when the PR gets merged while the agent is reviewing', async () => {
+    const isOpen = vi.fn<() => Promise<boolean>>()
+      .mockResolvedValueOnce(true) // pre-clone check: still open
+      .mockResolvedValueOnce(false); // post-review check: merged meanwhile
+    const forge = fakeForge({ isOpen });
+    const result = await runReviewJob(deps(forge, fakeAgent(async () => LONG_REVIEW)), 'a/b', pr);
+    expect(result).toBe('skipped-closed');
+    expect(isOpen).toHaveBeenCalledTimes(2);
+    expect(forge.postComment).not.toHaveBeenCalled();
+    await expect(fs.readdir(path.join(tmp, 'cache'))).resolves.toEqual([]); // clone still cleaned
   });
 
   it('uses the repo rubric override when the clone contains .prwatch/rubric.md', async () => {

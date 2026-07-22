@@ -35,6 +35,13 @@ describe('GitHubForge', () => {
     expect(calls[1]).toEqual(['gh', 'pr', 'checkout', '7']);
   });
 
+  it('isOpen is true only for state=open', async () => {
+    const { exec: openExec } = fakeExec({ 'gh api repos/a/b/pulls/7': '{"state":"open"}' });
+    expect(await new GitHubForge(openExec).isOpen('a/b', 7)).toBe(true);
+    const { exec: closedExec } = fakeExec({ 'gh api repos/a/b/pulls/7': '{"state":"closed"}' });
+    expect(await new GitHubForge(closedExec).isOpen('a/b', 7)).toBe(false);
+  });
+
   it('hasMarkerComment detects the marker', async () => {
     const comments = JSON.stringify([{ body: 'hi' }, { body: `${MARKER}\nold review` }]);
     const { exec } = fakeExec({ 'gh api repos/a/b/issues/7/comments': comments });

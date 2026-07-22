@@ -6,7 +6,7 @@ import { resolveRubric } from '../rubric.js';
 import { buildPrompt } from '../prompt.js';
 import { MARKER } from '../forge/github.js';
 
-export type JobResult = 'posted' | 'skipped-existing' | 'failed';
+export type JobResult = 'posted' | 'skipped-existing' | 'skipped-closed' | 'failed';
 
 export interface JobDeps {
   forge: ForgeAdapter;
@@ -30,6 +30,11 @@ export async function runReviewJob(deps: JobDeps, repo: string, pr: PR): Promise
   const dir = path.join(cacheRoot, `${repo.replace('/', '-')}-${pr.number}`);
 
   try {
+    if (!(await forge.isOpen(repo, pr.number))) {
+      log(`skip ${repo}#${pr.number}: no longer open`);
+      return 'skipped-closed';
+    }
+
     if (await forge.hasMarkerComment(repo, pr.number)) {
       log(`skip ${repo}#${pr.number}: prwatch comment already exists`);
       return 'skipped-existing';
@@ -44,6 +49,10 @@ export async function runReviewJob(deps: JobDeps, repo: string, pr: PR): Promise
     const output = (await agent.review({ cwd: dir, prompt, timeoutMs })).trim();
     if (output.length < MIN_OUTPUT_CHARS) {
       throw new Error(`agent output too short (${output.length} chars)`);
+    }
+    if (!(await forge.isOpen(repo, pr.number))) {
+      log(`skip ${repo}#${pr.number}: closed or merged while the review ran`);
+      return 'skipped-closed';
     }
     await forge.postComment(repo, pr.number, `${MARKER}\n${output}${attribution(agent.name)}`);
     log(`posted review for ${repo}#${pr.number}`);
