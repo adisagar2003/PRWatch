@@ -4,8 +4,8 @@ import TextInput from 'ink-text-input';
 import { Menu } from './Menu.js';
 import { Banner } from './Banner.js';
 import { saveConfig, type Config, type AgentName } from '../config.js';
-import { loadState } from '../state.js';
-import { detectInstalledAgents } from '../agents/index.js';
+import { loadState, type CurrentJob } from '../state.js';
+import { detectInstalledAgents, getAgent } from '../agents/index.js';
 import { checkGhAuth } from '../forge/github.js';
 import { tailLog } from '../daemon/log.js';
 
@@ -49,7 +49,7 @@ export function App({ initialConfig }: { initialConfig: Config }) {
           }}
         />
       )}
-      {screen === 'status' && <StatusScreen />}
+      {screen === 'status' && <StatusScreen agentName={config.agent} />}
       {screen === 'repos' && (
         <ReposScreen
           repos={config.repos}
@@ -79,8 +79,10 @@ export function App({ initialConfig }: { initialConfig: Config }) {
   );
 }
 
-function StatusScreen() {
+function StatusScreen({ agentName }: { agentName: AgentName }) {
   const [ghOk, setGhOk] = useState<boolean | null>(null);
+  const [agentInstalled, setAgentInstalled] = useState<boolean | null>(null);
+  const [currentJob, setCurrentJob] = useState<CurrentJob | null>(null);
   const [lastTick, setLastTick] = useState<string | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -89,18 +91,37 @@ function StatusScreen() {
     checkGhAuth()
       .then(setGhOk)
       .catch((e) => setError((e as Error).message));
+    getAgent(agentName)
+      .isInstalled()
+      .then(setAgentInstalled)
+      .catch((e) => setError((e as Error).message));
     loadState()
-      .then((s) => setLastTick(s.lastTickAt))
+      .then((s) => {
+        setLastTick(s.lastTickAt);
+        setCurrentJob(s.currentJob ?? null);
+      })
       .catch((e) => setError((e as Error).message));
     tailLog(10)
       .then(setLogLines)
       .catch((e) => setError((e as Error).message));
-  }, []);
+  }, [agentName]);
+
+  const agentStatus =
+    agentInstalled === null
+      ? '…'
+      : !agentInstalled
+        ? `NOT FOUND — install ${agentName}`
+        : currentJob
+          ? `installed · reviewing ${currentJob.repo}#${currentJob.pr} since ${currentJob.startedAt}`
+          : 'installed · idle';
 
   return (
     <Box flexDirection="column">
       {error !== null && <Text color="red">{error}</Text>}
       <Text>gh auth: {ghOk === null ? '…' : ghOk ? 'OK' : 'NOT LOGGED IN — run `gh auth login`'}</Text>
+      <Text>
+        agent ({agentName}): {agentStatus}
+      </Text>
       <Text>last daemon tick: {lastTick ?? 'never (is `prw daemon` running?)'}</Text>
       <Text bold>recent log:</Text>
       {logLines.length === 0 && <Text dimColor>(empty)</Text>}

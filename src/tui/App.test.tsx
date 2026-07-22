@@ -52,6 +52,26 @@ describe('App', () => {
     expect(lastFrame()).toContain('2 repo');
   });
 
+  it('shows the agent CLI status including the in-flight review on the Status screen', async () => {
+    await fs.writeFile(
+      path.join(tmp, 'state.json'),
+      JSON.stringify({
+        lastTickAt: '2026-07-22T00:00:00.000Z',
+        repos: {},
+        currentJob: { repo: 'a/b', pr: 5, agent: 'claude', startedAt: '2026-07-22T00:00:00.000Z' },
+      }),
+    );
+
+    const { stdin, lastFrame } = render(<App initialConfig={{ ...DEFAULT_CONFIG }} />);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    stdin.write('\r'); // Status is the first menu item
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('agent (claude):');
+    expect(frame).toContain('reviewing a/b#5');
+  });
+
   it('shows an error instead of crashing when state.json is corrupt', async () => {
     await fs.writeFile(path.join(tmp, 'state.json'), '{invalid json}');
 
