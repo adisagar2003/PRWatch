@@ -44,4 +44,11 @@ describe('resolveRubric', () => {
     await ensureHomeRubric();
     expect(await fs.readFile(rubricPath(), 'utf8')).toBe('edited');
   });
+
+  it('throws when repo rubric path is a directory', async () => {
+    await fs.mkdir(path.join(clone, '.prwatch', 'rubric.md'), { recursive: true });
+    await expect(resolveRubric(clone)).rejects.toMatchObject({
+      message: expect.stringMatching(/rubric.*\.prwatch/),
+    });
+  });
 });

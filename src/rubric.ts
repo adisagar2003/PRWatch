@@ -24,8 +24,23 @@ Score each category 1-5 (1 = severe problems, 5 = excellent):
 
 export async function resolveRubric(cloneDir: string): Promise<string> {
   const repoOverride = path.join(cloneDir, '.prwatch', 'rubric.md');
-  try { return await fs.readFile(repoOverride, 'utf8'); } catch {}
-  try { return await fs.readFile(rubricPath(), 'utf8'); } catch {}
+  try {
+    return await fs.readFile(repoOverride, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw new Error(`cannot read rubric at ${repoOverride}: ${(err as Error).message}`);
+    }
+  }
+
+  const homeRubric = rubricPath();
+  try {
+    return await fs.readFile(homeRubric, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw new Error(`cannot read rubric at ${homeRubric}: ${(err as Error).message}`);
+    }
+  }
+
   return DEFAULT_RUBRIC;
 }
 
