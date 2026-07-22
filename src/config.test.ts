@@ -34,4 +34,34 @@ describe('config', () => {
     expect(c.agent).toBe('claude');
     expect(c.pollIntervalMinutes).toBe(3);
   });
+
+  it('rejects corrupt JSON', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), '{invalid json}');
+    await expect(loadConfig()).rejects.toThrow(/invalid config at.*config\.json/);
+  });
+
+  it('rejects invalid agent value', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ agent: 'gpt' }));
+    await expect(loadConfig()).rejects.toThrow(/invalid config at.*agent/);
+  });
+
+  it('rejects repos when not an array', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ repos: 'a/b' }));
+    await expect(loadConfig()).rejects.toThrow(/invalid config at.*repos/);
+  });
+
+  it('rejects invalid repos array (non-string elements)', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ repos: [123] }));
+    await expect(loadConfig()).rejects.toThrow(/invalid config at.*repos/);
+  });
+
+  it('rejects non-positive pollIntervalMinutes', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ pollIntervalMinutes: 0 }));
+    await expect(loadConfig()).rejects.toThrow(/invalid config at.*pollIntervalMinutes/);
+  });
+
+  it('rejects non-positive agentTimeoutMinutes', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ agentTimeoutMinutes: -1 }));
+    await expect(loadConfig()).rejects.toThrow(/invalid config at.*agentTimeoutMinutes/);
+  });
 });
