@@ -38,6 +38,13 @@ describe('App', () => {
     expect(frame.indexOf('⣿')).toBeLessThan(frame.indexOf('prwatch'));
   });
 
+  it('renders the ASCII PR WATCH title under the art', () => {
+    const { lastFrame } = render(<App initialConfig={{ ...DEFAULT_CONFIG }} />);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('@@@@@@@  @@@@@@@'); // first line of the PR WATCH lettering
+    expect(frame.indexOf('⣿')).toBeLessThan(frame.indexOf('@@@@@@@'));
+  });
+
   it('shows watched repos count from config', () => {
     const { lastFrame } = render(
       <App initialConfig={{ ...DEFAULT_CONFIG, repos: ['a/b', 'c/d'] }} />,
