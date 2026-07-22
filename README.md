@@ -45,6 +45,19 @@ prwatch fences the PR title/description inside `<untrusted-pr-content>` tags in 
 
 Everything lives in `~/.prwatch/`: `config.json`, `state.json`, `rubric.md`, `logs/`, `cache/` (empty between reviews).
 
+## Helper: fuzzy-find your repos
+
+`repo-find.sh` lists your GitHub repos and lets you fuzzy-search them (handy for picking which repos to watch). Requires `gh` (logged in) and `fzf`.
+
+```sh
+./repo-find.sh          # pick a repo, print its URL
+./repo-find.sh open     # pick a repo, open it in the browser
+./repo-find.sh clone    # pick a repo, clone it into the current folder
+./repo-find.sh view     # pick a repo, show its details in the terminal
+```
+
+A live preview pane shows `gh repo view` details for whatever you're hovering. The repo list is cached for 10 minutes (in your temp dir) so repeat runs are fast. Fetches up to 300 repos by default — raise it with `REPO_LIMIT=500 ./repo-find.sh`.
+
 ## License
 
 MIT
