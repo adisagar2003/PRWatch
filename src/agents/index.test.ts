@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { makeAgent, agents, getAgent } from './index.js';
+import { killActiveProcessGroups } from '../run-command.js';
 
 let tmp: string;
 
@@ -67,4 +68,13 @@ describe('agent adapters', () => {
     expect(agents.map((a) => a.name).sort()).toEqual(['claude', 'codex', 'opencode']);
     expect(getAgent('codex').name).toBe('codex');
   });
+
+  it('killActiveProcessGroups kills a hanging in-flight review', async () => {
+    const bin = await writeScript('hanger2', 'sleep 30');
+    const agent = makeAgent('claude', bin, (p) => [p]);
+    const pending = agent.review({ cwd: tmp, prompt: 'x', timeoutMs: 60_000 });
+    await new Promise((r) => setTimeout(r, 150));
+    killActiveProcessGroups();
+    await expect(pending).rejects.toThrow(/exited|killed/);
+  }, 10_000);
 });
