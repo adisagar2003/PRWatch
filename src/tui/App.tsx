@@ -21,7 +21,7 @@ export function App({ initialConfig }: { initialConfig: Config }) {
   const update = (patch: Partial<Config>) => {
     const next = { ...config, ...patch };
     setConfig(next);
-    void saveConfig(next);
+    saveConfig(next).catch((e) => setMessage(`could not save config: ${(e as Error).message}`));
   };
 
   useInput((_input, key) => {
@@ -81,15 +81,23 @@ function StatusScreen() {
   const [ghOk, setGhOk] = useState<boolean | null>(null);
   const [lastTick, setLastTick] = useState<string | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void checkGhAuth().then(setGhOk);
-    void loadState().then((s) => setLastTick(s.lastTickAt));
-    void tailLog(10).then(setLogLines);
+    checkGhAuth()
+      .then(setGhOk)
+      .catch((e) => setError((e as Error).message));
+    loadState()
+      .then((s) => setLastTick(s.lastTickAt))
+      .catch((e) => setError((e as Error).message));
+    tailLog(10)
+      .then(setLogLines)
+      .catch((e) => setError((e as Error).message));
   }, []);
 
   return (
     <Box flexDirection="column">
+      {error !== null && <Text color="red">{error}</Text>}
       <Text>gh auth: {ghOk === null ? '…' : ghOk ? 'OK' : 'NOT LOGGED IN — run `gh auth login`'}</Text>
       <Text>last daemon tick: {lastTick ?? 'never (is `prw daemon` running?)'}</Text>
       <Text bold>recent log:</Text>
@@ -139,11 +147,15 @@ function AddRepoScreen({ onDone }: { onDone: (repo: string) => void }) {
 
 function AgentScreen({ onPick }: { onPick: (name: AgentName) => void }) {
   const [installed, setInstalled] = useState<AgentName[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void detectInstalledAgents().then((a) => setInstalled(a.map((x) => x.name)));
+    detectInstalledAgents()
+      .then((a) => setInstalled(a.map((x) => x.name)))
+      .catch((e) => setError((e as Error).message));
   }, []);
 
+  if (error !== null) return <Text color="red">agent detection failed: {error}</Text>;
   if (installed === null) return <Text>detecting installed agents…</Text>;
   if (installed.length === 0)
     return <Text color="red">No agents found. Install claude, codex, or opencode first.</Text>;
