@@ -77,11 +77,40 @@ export async function resolveRubric(cloneDir: string): Promise<string> {
   return DEFAULT_RUBRIC;
 }
 
+// The score-table default shipped before the candid-review rewrite. Kept only
+// so ensureHomeRubric can recognise an un-customised legacy install and migrate
+// it. Do not edit — it must match the old bytes exactly.
+export const LEGACY_DEFAULT_RUBRIC = `# Review Rubric
+
+Score each category 1-5 (1 = severe problems, 5 = excellent):
+
+| Category | What to check |
+|---|---|
+| Correctness | Logic errors, edge cases, race conditions, broken behavior |
+| Security | Injection, auth gaps, secrets in code, unsafe input handling |
+| Tests | New/changed behavior covered? Tests meaningful, not tautological? |
+| Readability | Naming, structure, dead code, needless complexity |
+| Scope | Does the PR do one thing? Unrelated changes mixed in? |
+
+## Output format (follow exactly)
+
+1. **Verdict:** APPROVE or REQUEST CHANGES (one line).
+2. **Scores:** the table above with a 1-5 score and one-line justification per category.
+3. **Findings:** bullet list, each as \`[blocker|major|minor|nit] path/to/file.ts:123 — explanation\`. If none, write "No findings."
+4. Keep the whole review under 500 words.
+`;
+
 export async function ensureHomeRubric(): Promise<void> {
   await fs.mkdir(prwatchHome(), { recursive: true });
   try {
-    await fs.access(rubricPath());
-  } catch {
+    const current = await fs.readFile(rubricPath(), 'utf8');
+    // Upgrade un-customised legacy installs to the new default; a rubric the
+    // user has edited (anything else) is left untouched.
+    if (current === LEGACY_DEFAULT_RUBRIC) {
+      await fs.writeFile(rubricPath(), DEFAULT_RUBRIC);
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     await fs.writeFile(rubricPath(), DEFAULT_RUBRIC);
   }
 }

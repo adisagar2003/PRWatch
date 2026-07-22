@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveRubric, ensureHomeRubric, DEFAULT_RUBRIC } from './rubric.js';
+import { resolveRubric, ensureHomeRubric, DEFAULT_RUBRIC, LEGACY_DEFAULT_RUBRIC } from './rubric.js';
 import { rubricPath } from './paths.js';
 
 let tmp: string;
@@ -37,12 +37,35 @@ describe('resolveRubric', () => {
     expect(await resolveRubric(clone)).toBe('repo rubric');
   });
 
-  it('ensureHomeRubric writes default once and never overwrites', async () => {
+  it('ensureHomeRubric writes default once and never overwrites edits', async () => {
     await ensureHomeRubric();
     expect(await fs.readFile(rubricPath(), 'utf8')).toBe(DEFAULT_RUBRIC);
     await fs.writeFile(rubricPath(), 'edited');
     await ensureHomeRubric();
     expect(await fs.readFile(rubricPath(), 'utf8')).toBe('edited');
+  });
+
+  it('ensureHomeRubric migrates an un-customised legacy rubric to the new default', async () => {
+    await fs.writeFile(rubricPath(), LEGACY_DEFAULT_RUBRIC);
+    await ensureHomeRubric();
+    expect(await fs.readFile(rubricPath(), 'utf8')).toBe(DEFAULT_RUBRIC);
+  });
+
+  it('ensureHomeRubric leaves a user-edited legacy rubric alone', async () => {
+    const edited = LEGACY_DEFAULT_RUBRIC + '\n\nExtra house rule: no TODOs.\n';
+    await fs.writeFile(rubricPath(), edited);
+    await ensureHomeRubric();
+    expect(await fs.readFile(rubricPath(), 'utf8')).toBe(edited);
+  });
+
+  it('DEFAULT_RUBRIC keeps the candid-review output contract', () => {
+    // Assert the actual strings the rubric emits (bold list items, not ## headings),
+    // so removing a required section or field fails the test.
+    expect(DEFAULT_RUBRIC).toContain('# Code Review (Radical Candor)');
+    expect(DEFAULT_RUBRIC).toContain('## Project standards');
+    expect(DEFAULT_RUBRIC).toContain('**Confidence:** Safe ✓ | Verify ⚡ | Careful ⚠️');
+    expect(DEFAULT_RUBRIC).toContain('**🔥 Critical Issues**');
+    expect(DEFAULT_RUBRIC).toContain("**✅ What's Good**");
   });
 
   it('throws when repo rubric path is a directory', async () => {
