@@ -31,6 +31,13 @@ describe('App', () => {
     expect(frame).toContain('Quit');
   });
 
+  it('renders the banner art above the menu', () => {
+    const { lastFrame } = render(<App initialConfig={{ ...DEFAULT_CONFIG }} />);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('⣿'); // braille art from the Banner
+    expect(frame.indexOf('⣿')).toBeLessThan(frame.indexOf('prwatch'));
+  });
+
   it('shows watched repos count from config', () => {
     const { lastFrame } = render(
       <App initialConfig={{ ...DEFAULT_CONFIG, repos: ['a/b', 'c/d'] }} />,

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { Menu } from './Menu.js';
+import { Banner } from './Banner.js';
 import { saveConfig, type Config, type AgentName } from '../config.js';
 import { loadState } from '../state.js';
 import { detectInstalledAgents } from '../agents/index.js';
@@ -30,6 +31,7 @@ export function App({ initialConfig }: { initialConfig: Config }) {
 
   return (
     <Box flexDirection="column" padding={1}>
+      <Banner />
       <Text bold color="magenta">
         prwatch — local PR reviewer ({config.repos.length} repo{config.repos.length === 1 ? '' : 's'} watched, agent: {config.agent})
       </Text>
