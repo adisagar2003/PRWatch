@@ -28,11 +28,14 @@ describe('GitHubForge', () => {
     ]);
   });
 
-  it('clone shallow-clones then checks out the PR', async () => {
+  it('clone shallow-clones then checks out the PR head via the fork-safe pull ref', async () => {
     const { exec, calls } = fakeExec({});
     await new GitHubForge(exec).clone('a/b', 7, '/tmp/x');
     expect(calls[0]).toEqual(['gh', 'repo', 'clone', 'a/b', '/tmp/x', '--', '--depth', '50']);
-    expect(calls[1]).toEqual(['gh', 'pr', 'checkout', '7']);
+    // gh pr checkout breaks in shallow (implicitly single-branch) clones:
+    // it cannot create tracking branches, so fetch refs/pull/N/head directly.
+    expect(calls[1]).toEqual(['git', 'fetch', '--depth', '50', 'origin', 'pull/7/head:prwatch-pr']);
+    expect(calls[2]).toEqual(['git', 'checkout', 'prwatch-pr']);
   });
 
   it('hasMarkerComment detects the marker', async () => {
