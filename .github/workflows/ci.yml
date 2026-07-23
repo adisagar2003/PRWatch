@@ -27,15 +27,17 @@ jobs:
         run: npm run typecheck
 
       - name: Test
+        id: test
         # Emit a JUnit XML report alongside the normal console output. The file
         # is written even when tests fail, so the upload step below can grab it.
         run: npm test -- --reporter=default --reporter=junit --outputFile=test-report.junit.xml
 
       - name: Upload test report
-        # Only on failure — a green run needs no artifact.
-        if: failure()
+        # Only when the test step itself failed — not when an earlier step
+        # (npm ci, typecheck) failed and no report was ever written.
+        if: failure() && steps.test.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: test-report
           path: test-report.junit.xml
-          if-no-files-found: warn
+          if-no-files-found: error
