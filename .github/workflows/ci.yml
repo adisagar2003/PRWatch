@@ -1,0 +1,41 @@
+name: CI
+
+# Run on every pull request, plus pushes to main so the default branch
+# always has a known-good signal.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          # Caches ~/.npm keyed on package-lock.json, so unchanged deps
+          # are restored instead of re-downloaded on every run.
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        # Emit a JUnit XML report alongside the normal console output. The file
+        # is written even when tests fail, so the upload step below can grab it.
+        run: npm test -- --reporter=default --reporter=junit --outputFile=test-report.junit.xml
+
+      - name: Upload test report
+        # Only on failure — a green run needs no artifact.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: test-report.junit.xml
+          if-no-files-found: warn
