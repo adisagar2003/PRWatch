@@ -1,2 +1,5 @@
 node_modules/
 dist/
+
+# CI test report artifact
+test-report.junit.xml
