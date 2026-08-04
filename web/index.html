@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PRWatch — review your own PRs with the agent you already pay for</title>
+<meta name="description" content="PRWatch is a local daemon + TUI that reviews every new GitHub PR with your own AI agent (Claude Code, Codex, OpenCode). Zero CI cost." />
+<meta property="og:title" content="PRWatch" />
+<meta property="og:description" content="Local daemon that reviews your new GitHub PRs with your own AI agent. Zero CI cost." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👁️</text></svg>" />
+<style>
+  :root {
+    --bg: #04070c;
+    --bg-soft: #070c14;
+    --panel: #0a1220;
+    --line: #14283c;
+    --line-soft: #0f1e2e;
+    --text: #dcefff;
+    --muted: #8ba6bf;
+    --dim: #5b7489;
+    --accent: #2ea8ff;      /* tron blue */
+    --accent-2: #79e6ff;    /* cyan */
+    --hot: #ff3b30;         /* tron red */
+    --hot-2: #ff7a45;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* tron grid + ambient glow */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(58rem 30rem at 50% -6rem, rgba(46,168,255,.20), transparent 68%),
+      radial-gradient(34rem 20rem at 50% 6rem, rgba(255,59,48,.10), transparent 70%),
+      repeating-linear-gradient(90deg, rgba(46,168,255,.055) 0 1px, transparent 1px 4.5rem),
+      repeating-linear-gradient(0deg, rgba(46,168,255,.055) 0 1px, transparent 1px 4.5rem);
+    mask-image: linear-gradient(180deg, #000 0, #000 40%, transparent 78%);
+    z-index: 0;
+  }
+
+  main, footer { position: relative; z-index: 1; }
+  nav { position: sticky; z-index: 20; }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .wrap { width: min(1080px, 92vw); margin: 0 auto; }
+
+  /* ---------- nav ---------- */
+  nav {
+    position: sticky;
+    top: 0;
+    backdrop-filter: blur(14px);
+    background: rgba(4,7,12,.9);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  nav .wrap {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    height: 3.5rem;
+  }
+  .brand {
+    display: flex; align-items: center; gap: .5rem;
+    color: var(--text); font-weight: 600; letter-spacing: .12em; font-size: .8rem;
+  }
+  .brand:hover { text-decoration: none; }
+  .brand .dot {
+    width: .5rem; height: .5rem; border-radius: 50%;
+    background: var(--hot); box-shadow: 0 0 12px var(--hot);
+  }
+  nav .spacer { flex: 1; }
+  nav a.navlink { color: var(--muted); font-size: .8rem; letter-spacing: .04em; }
+  nav a.navlink:hover { color: var(--text); text-decoration: none; }
+  @media (max-width: 620px) { nav a.navlink.hide-sm { display: none; } }
+
+  /* ---------- hero ---------- */
+  header.hero { padding: clamp(2.5rem, 7vw, 5.5rem) 0 3rem; text-align: center; }
+
+  /* the iris burns red at the centre and cools to blue at the lids; --ix/--iy track the gaze */
+  #eye {
+    margin: 0 auto;
+    font-size: clamp(4px, 1.05vw, 9.5px);
+    line-height: 1.02;
+    white-space: pre;
+    background:
+      /* iris: white-hot catchlight → red → ember, sized to the iris itself */
+      radial-gradient(ellipse 12% 52% at var(--ix, 50%) var(--iy, 50%),
+        #fff5ee 0%, #ffcf9a 12%, var(--hot) 34%, #ff5324 62%,
+        rgba(255,83,36,.85) 88%, rgba(255,83,36,0) 100%),
+      /* everything else: tron blue, cooler toward the lids */
+      radial-gradient(ellipse 62% 118% at 50% 50%, #58c4ff 0%, var(--accent) 38%, #1b6cff 68%, var(--accent-2) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 0 14px rgba(46,168,255,.35)) drop-shadow(0 0 26px rgba(255,59,48,.12));
+    user-select: none;
+  }
+
+  h1.wordmark {
+    margin: 1.1rem 0 .4rem;
+    font-size: clamp(2.1rem, 6.4vw, 3.6rem);
+    letter-spacing: .2em;
+    font-weight: 700;
+    background: linear-gradient(100deg, var(--accent-2), var(--accent) 30%, #eaf6ff 52%, var(--hot) 80%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: none;
+  }
+  .tagline { color: var(--muted); max-width: 46ch; margin: 0 auto 1.75rem; }
+  .tagline b { color: var(--text); font-weight: 600; }
+
+  .cta { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; align-items: stretch; }
+
+  .copybox {
+    display: flex; align-items: center; gap: .75rem;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: .55rem; padding: .55rem .6rem .55rem .85rem;
+    font-size: .86rem;
+  }
+  .copybox .prompt { color: var(--hot); }
+  .copybox code { color: var(--text); }
+  .copybox button {
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .08em;
+    background: var(--line); color: var(--muted);
+    border: 1px solid transparent; border-radius: .35rem;
+    padding: .3rem .55rem; cursor: pointer;
+  }
+  .copybox button:hover { color: var(--text); border-color: var(--accent); background: #10243a; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .6rem 1rem; border-radius: .55rem;
+    border: 1px solid var(--line); background: var(--panel);
+    color: var(--text); font-size: .86rem;
+  }
+  .btn:hover { text-decoration: none; border-color: var(--accent); background: #0d1c2c; }
+  .btn.primary { background: linear-gradient(180deg, #2ea8ff, #1266ff); border-color: #52bcff; color: #021018; box-shadow: 0 0 18px -4px rgba(46,168,255,.7); }
+  .btn.primary:hover { filter: brightness(1.08); }
+
+  .badges { margin-top: 1.5rem; display: flex; gap: 1.25rem; justify-content: center; flex-wrap: wrap; color: var(--dim); font-size: .74rem; letter-spacing: .06em; }
+
+  /* ---------- terminal ---------- */
+  section { padding: 3.25rem 0; }
+  .eyebrow { color: var(--hot); font-size: .72rem; letter-spacing: .22em; text-transform: uppercase; margin-bottom: .5rem; }
+  h2 { font-size: 1.5rem; letter-spacing: .01em; margin: 0 0 .35rem; }
+  h3 { font-size: 1.02rem; margin: 2rem 0 .5rem; letter-spacing: .02em; }
+  .lead { color: var(--muted); margin: 0 0 1.5rem; max-width: 62ch; }
+
+  .term {
+    background: #050a11;
+    border: 1px solid var(--line);
+    border-radius: .75rem;
+    overflow: hidden;
+    box-shadow: 0 24px 60px -30px rgba(0,0,0,.9), 0 0 0 1px rgba(46,168,255,.10), 0 0 34px -18px rgba(46,168,255,.5);
+  }
+  .term-bar {
+    display: flex; align-items: center; gap: .45rem;
+    padding: .6rem .85rem; border-bottom: 1px solid var(--line-soft);
+    background: linear-gradient(180deg, #0c1a29, #07101b);
+  }
+  .term-bar i { width: .68rem; height: .68rem; border-radius: 50%; display: block; }
+  .term-bar .t { margin-left: .6rem; color: var(--dim); font-size: .72rem; letter-spacing: .08em; }
+  .term-body {
+    margin: 0; padding: 1rem 1.1rem;
+    height: 20rem; overflow: hidden;
+    font-size: clamp(11px, 1.25vw, 13.5px); line-height: 1.6;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .term-body .c-prompt { color: var(--hot); }
+  .term-body .c-cmd { color: var(--text); }
+  .term-body .c-time { color: var(--dim); }
+  .term-body .c-ok { color: var(--accent-2); }
+  .term-body .c-warn { color: var(--hot); }
+  .term-body .c-info { color: var(--accent); }
+  .term-body .c-dim { color: var(--muted); }
+  .caret { display: inline-block; width: .55ch; background: var(--hot); box-shadow: 0 0 8px var(--hot); animation: blink 1s steps(1) infinite; color: transparent; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ---------- cards ---------- */
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+  .card {
+    background: var(--bg-soft); border: 1px solid var(--line-soft);
+    border-radius: .7rem; padding: 1.1rem 1.15rem;
+  }
+  .card h4 { margin: 0 0 .4rem; font-size: .95rem; }
+  .card p { margin: 0; color: var(--muted); font-size: .86rem; }
+  .card .ico { font-size: 1.1rem; }
+
+  /* ---------- docs ---------- */
+  .docs { display: grid; grid-template-columns: 13rem 1fr; gap: 2.5rem; align-items: start; }
+  @media (max-width: 860px) { .docs { grid-template-columns: 1fr; gap: 1.25rem; } .toc { position: static !important; } }
+  .toc { position: sticky; top: 5rem; border-left: 1px solid var(--line); padding-left: 1rem; }
+  .toc a { display: block; color: var(--muted); font-size: .82rem; padding: .18rem 0; }
+  .toc a:hover { color: var(--text); text-decoration: none; }
+  .toc .toc-title { color: var(--dim); font-size: .7rem; letter-spacing: .2em; text-transform: uppercase; margin-bottom: .5rem; }
+
+  .doc h2 { margin-top: .25rem; }
+  .doc p, .doc li { color: var(--muted); }
+  .doc p code, .doc li code, .doc td code { color: var(--accent-2); background: #0c1c2c; padding: .1rem .35rem; border-radius: .3rem; font-size: .86em; }
+  .doc > section { padding: 0; margin-bottom: 3rem; scroll-margin-top: 5rem; }
+  .doc ol, .doc ul { padding-left: 1.3rem; }
+  .doc li { margin: .3rem 0; }
+
+  pre.code {
+    background: #060c14; border: 1px solid var(--line);
+    border-radius: .6rem; padding: .85rem 1rem; overflow-x: auto;
+    font-size: .84rem; color: var(--text); margin: .75rem 0 1rem;
+  }
+  pre.code .cm { color: var(--dim); }
+  pre.code .p { color: var(--hot); }
+
+  table { width: 100%; border-collapse: collapse; margin: .75rem 0 1rem; font-size: .85rem; display: block; overflow-x: auto; }
+  th, td { text-align: left; padding: .55rem .6rem; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; }
+  td { color: var(--muted); }
+  td:first-child { white-space: nowrap; color: var(--text); }
+
+  .note {
+    border: 1px solid #45140f; background: #170907;
+    border-radius: .6rem; padding: .8rem 1rem; margin: 1rem 0;
+    font-size: .86rem; color: #ffd7d2;
+  }
+  .note b { color: var(--hot); }
+
+  hr.rule { border: 0; border-top: 1px solid var(--line-soft); margin: 0; }
+
+  footer { padding: 2.5rem 0 3.5rem; color: var(--dim); font-size: .8rem; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .caret { animation: none; }
+    html { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><span class="dot"></span> PRWATCH</a>
+    <span class="spacer"></span>
+    <a class="navlink" href="#quickstart">Docs</a>
+    <a class="navlink hide-sm" href="#commands">Commands</a>
+    <a class="navlink hide-sm" href="#security">Security</a>
+    <a class="navlink" href="https://github.com/adisagar2003/PRWatch">GitHub ↗</a>
+  </div>
+</nav>
+
+<main id="top">
+
+  <header class="hero">
+    <div class="wrap">
+      <pre id="eye" aria-hidden="true"></pre>
+      <h1 class="wordmark">PRWATCH</h1>
+      <p class="tagline">Review your own pull requests with the AI agent you <b>already pay for</b> — locally, with zero CI cost.</p>
+
+      <div class="cta">
+        <div class="copybox">
+          <span class="prompt">$</span>
+          <code id="install-cmd">npm install -g prwatch</code>
+          <button id="copy-btn" type="button">COPY</button>
+        </div>
+        <a class="btn primary" href="#quickstart">Read the docs</a>
+        <a class="btn" href="https://github.com/adisagar2003/PRWatch">★ GitHub</a>
+      </div>
+
+      <div class="badges">
+        <span>MIT LICENSE</span>
+        <span>NODE ≥ 20</span>
+        <span>CLAUDE · CODEX · OPENCODE</span>
+        <span>NO CI MINUTES</span>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <div class="wrap">
+      <div class="eyebrow">Live</div>
+      <h2>One daemon. Every new PR reviewed.</h2>
+      <p class="lead">Pick the repos to watch, pick your agent, leave it running. New PR appears → shallow clone → your agent runs the rubric → one structured review comment → clone deleted.</p>
+      <div class="term">
+        <div class="term-bar">
+          <i style="background:#ff3b30"></i><i style="background:#2ea8ff"></i><i style="background:#79e6ff"></i>
+          <span class="t">prw daemon — ~/.prwatch</span>
+        </div>
+        <pre class="term-body" id="term" aria-live="polite"></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="grid">
+        <div class="card">
+          <div class="ico">💸</div>
+          <h4>Zero CI cost</h4>
+          <p>Nothing runs in Actions. The review happens on your machine with the agent subscription you already have.</p>
+        </div>
+        <div class="card">
+          <div class="ico">🤖</div>
+          <h4>Your agent, your rules</h4>
+          <p>Claude Code, Codex, or OpenCode — auto-detected from your <code>PATH</code>. The rubric is a markdown file you own.</p>
+        </div>
+        <div class="card">
+          <div class="ico">🧹</div>
+          <h4>No backlog, no spam</h4>
+          <p>Only PRs opened after you start watching. Each PR reviewed exactly once. Temp clones always deleted.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule" />
+
+  <section>
+    <div class="wrap docs">
+      <aside class="toc">
+        <div class="toc-title">Documentation</div>
+        <a href="#quickstart">Quickstart</a>
+        <a href="#how">How it works</a>
+        <a href="#commands">Commands</a>
+        <a href="#tui">The TUI</a>
+        <a href="#config">Configuration</a>
+        <a href="#rubric">Rubric</a>
+        <a href="#service">Run at login</a>
+        <a href="#security">Security</a>
+        <a href="#state">State &amp; logs</a>
+        <a href="#repo-find">repo-find.sh</a>
+        <a href="#troubleshooting">Troubleshooting</a>
+      </aside>
+
+      <div class="doc">
+        <section id="quickstart">
+          <div class="eyebrow">Docs</div>
+          <h2>Quickstart</h2>
+          <p class="lead">Three prerequisites, one install, two commands.</p>
+
+          <h3>1. Prerequisites</h3>
+          <ul>
+            <li>Node.js <code>≥ 20</code></li>
+            <li><code>gh</code> (GitHub CLI), logged in — <code>gh auth login</code></li>
+            <li>At least one agent CLI on your <code>PATH</code>: <code>claude</code>, <code>codex</code>, or <code>opencode</code></li>
+          </ul>
+
+          <h3>2. Install</h3>
+<pre class="code"><span class="p">$</span> npm install -g prwatch</pre>
+
+          <h3>3. Configure, then watch</h3>
+<pre class="code"><span class="p">$</span> prw            <span class="cm"># TUI: add repos, pick your agent, check status</span>
+<span class="p">$</span> prw daemon     <span class="cm"># start the watcher in the foreground (tmux-friendly)</span></pre>
+          <p>Open a PR on a watched repo. Within one poll interval (default 3 minutes) the review lands as a single comment on the PR.</p>
+        </section>
+
+        <section id="how">
+          <h2>How it works</h2>
+          <ol>
+            <li><b>Poll</b> — every <code>pollIntervalMinutes</code>, <code>gh</code> lists open PRs for each watched repo.</li>
+            <li><b>Filter</b> — PRs opened before you started watching that repo are skipped, so there is no backlog spam. Already-reviewed PRs are skipped via a local ledger plus an invisible <code>&lt;!-- prwatch --&gt;</code> marker on the posted comment, which makes reviews idempotent even if local state is lost.</li>
+            <li><b>Clone</b> — the PR head is shallow-cloned into <code>~/.prwatch/cache/</code>.</li>
+            <li><b>Review</b> — your agent runs inside that checkout with the rubric plus the PR title/body, fenced inside <code>&lt;untrusted-pr-content&gt;</code> tags.</li>
+            <li><b>Post &amp; clean</b> — the agent's output is posted as one PR comment, then the temp clone is deleted. Cache is empty between reviews.</li>
+          </ol>
+          <p>Push more commits to a PR that was already reviewed and PRWatch will <em>not</em> re-review it.</p>
+        </section>
+
+        <section id="commands">
+          <h2>Commands</h2>
+          <table>
+            <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><code>prw</code></td><td>Opens the TUI — add/remove repos, choose the agent, see status.</td></tr>
+              <tr><td><code>prw daemon</code></td><td>Runs the watcher in the foreground. Ctrl+C shuts down gracefully (no orphaned agent processes).</td></tr>
+              <tr><td><code>prw service install</code></td><td>Installs a login service (launchd on macOS, systemd user unit on Linux) and prints the path it wrote.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="tui">
+          <h2>The TUI</h2>
+          <p>Launched with a bare <code>prw</code>. Arrow keys / <code>j</code>&thinsp;<code>k</code> to move, <kbd>Enter</kbd> to select, <kbd>q</kbd> to quit.</p>
+          <table>
+            <thead><tr><th>Screen</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td>Repos</td><td>Add a repo by fuzzy-searching your GitHub repos live (type to filter, <kbd>Enter</kbd> to add), or remove a watched one.</td></tr>
+              <tr><td>Agent</td><td>Pick among the agents actually installed on your machine — PRWatch probes <code>claude</code>, <code>codex</code>, <code>opencode</code>.</td></tr>
+              <tr><td>Status</td><td>Watched repos, selected agent, and what the daemon last did.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="config">
+          <h2>Configuration</h2>
+          <p><code>~/.prwatch/config.json</code>. The TUI writes it; editing by hand is fine. Invalid values are rejected on load rather than silently coerced.</p>
+<pre class="code">{
+  "repos": ["adisagar2003/PRWatch"],
+  "agent": "claude",
+  "pollIntervalMinutes": 3,
+  "agentTimeoutMinutes": 10
+}</pre>
+          <table>
+            <thead><tr><th>Key</th><th>Default</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>repos</code></td><td><code>[]</code></td><td>Array of <code>owner/name</code> strings.</td></tr>
+              <tr><td><code>agent</code></td><td><code>"claude"</code></td><td>One of <code>claude</code>, <code>codex</code>, <code>opencode</code>.</td></tr>
+              <tr><td><code>pollIntervalMinutes</code></td><td><code>3</code></td><td>Finite number &gt; 0.</td></tr>
+              <tr><td><code>agentTimeoutMinutes</code></td><td><code>10</code></td><td>Hard timeout per review; the agent process is killed past it.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="rubric">
+          <h2>Rubric</h2>
+          <p>The review prompt's checklist. Edit it freely — this is where you encode what your team actually cares about.</p>
+          <table>
+            <thead><tr><th>Location</th><th>Scope</th></tr></thead>
+            <tbody>
+              <tr><td><code>~/.prwatch/rubric.md</code></td><td>Your default, used for every watched repo.</td></tr>
+              <tr><td><code>.prwatch/rubric.md</code></td><td>Committed at a repo's root — overrides the default for that repo.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="service">
+          <h2>Run at login</h2>
+<pre class="code"><span class="p">$</span> prw service install
+<span class="cm">service installed: ~/Library/LaunchAgents/com.prwatch.daemon.plist</span></pre>
+          <p>macOS gets a launchd agent, Linux a systemd user unit. Prefer a foreground <code>prw daemon</code> in tmux while you're still tuning the rubric — the log is right there.</p>
+        </section>
+
+        <section id="security">
+          <h2>Security</h2>
+          <p>Watching a public repo means running your agent against untrusted input: the PR title and body, and the PR's own files — which can include agent-instruction files like <code>CLAUDE.md</code> that an attacker committed specifically to steer your agent.</p>
+          <div class="note">
+            <b>Recommended:</b> only watch repos you trust, and run your agent with restrictive permissions (no auto-approved shell or network tools) whenever third-party PRs are in scope.
+          </div>
+          <p>PRWatch fences the PR title/description inside <code>&lt;untrusted-pr-content&gt;</code> tags in the prompt it sends. That does not stop an agent from reading attacker-added files inside the checkout — that mitigation has to come from your agent's own permission model.</p>
+        </section>
+
+        <section id="state">
+          <h2>State &amp; logs</h2>
+          <p>Everything lives under <code>~/.prwatch/</code> — delete the directory to fully reset.</p>
+          <table>
+            <thead><tr><th>Path</th><th>Contents</th></tr></thead>
+            <tbody>
+              <tr><td><code>config.json</code></td><td>Watched repos, agent, intervals.</td></tr>
+              <tr><td><code>state.json</code></td><td>Watch start times and the reviewed-PR ledger.</td></tr>
+              <tr><td><code>rubric.md</code></td><td>Your default review rubric.</td></tr>
+              <tr><td><code>logs/daemon.log</code></td><td>Poll, review, and post activity — first place to look.</td></tr>
+              <tr><td><code>cache/</code></td><td>Temp shallow clones. Empty between reviews.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="repo-find">
+          <h2><code>repo-find.sh</code></h2>
+          <p>A standalone <code>fzf</code> picker for your GitHub repos, for use outside the TUI. It ships only in a source checkout (<code>git clone</code>) — it is <b>not</b> in the npm package. Requires <code>gh</code> and <code>fzf</code>.</p>
+<pre class="code"><span class="p">$</span> ./repo-find.sh          <span class="cm"># pick a repo, print its URL</span>
+<span class="p">$</span> ./repo-find.sh open     <span class="cm"># open it in the browser</span>
+<span class="p">$</span> ./repo-find.sh clone    <span class="cm"># clone into the current folder</span>
+<span class="p">$</span> ./repo-find.sh view     <span class="cm"># show details in the terminal</span></pre>
+          <p>A live preview pane runs <code>gh repo view</code> on whatever you hover. The repo list is cached for 10 minutes under <code>${XDG_CACHE_HOME:-~/.cache}/prwatch/</code>. Fetches up to 300 repos — raise it with <code>REPO_LIMIT=500 ./repo-find.sh</code>.</p>
+        </section>
+
+        <section id="troubleshooting">
+          <h2>Troubleshooting</h2>
+          <table>
+            <thead><tr><th>Symptom</th><th>Check</th></tr></thead>
+            <tbody>
+              <tr><td>No agents listed</td><td>Is the CLI on your <code>PATH</code>? PRWatch resolves it with <code>which</code>; shell aliases and functions are invisible to it.</td></tr>
+              <tr><td>Nothing gets reviewed</td><td>Only PRs opened <em>after</em> you added the repo qualify. Open a fresh one, and confirm <code>gh auth status</code> is green.</td></tr>
+              <tr><td>Review never posts</td><td>Tail <code>~/.prwatch/logs/daemon.log</code>. A long agent run gets killed at <code>agentTimeoutMinutes</code> — raise it.</td></tr>
+              <tr><td>Same PR reviewed twice</td><td>Shouldn't happen: the ledger plus the <code>&lt;!-- prwatch --&gt;</code> comment marker both guard it. If it does, file an issue.</td></tr>
+              <tr><td><code>cache/</code> not empty</td><td>Leftover from a hard kill. Safe to delete by hand.</td></tr>
+            </tbody>
+          </table>
+          <p>Full manual end-to-end walkthrough: <a href="https://github.com/adisagar2003/PRWatch/blob/main/docs/e2e.md">docs/e2e.md</a>.</p>
+        </section>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <hr class="rule" style="margin-bottom:2rem" />
+  <div class="wrap">
+    <span>PRWatch — MIT licensed. Built by <a href="https://github.com/adisagar2003">adisagar2003</a>.</span>
+    <span>
+      <a href="https://github.com/adisagar2003/PRWatch">Repository</a> ·
+      <a href="https://www.npmjs.com/package/prwatch">npm</a> ·
+      <a href="https://github.com/adisagar2003/PRWatch/issues">Issues</a>
+    </span>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------------- animated ASCII eye ---------------- */
+  const eyeEl = document.getElementById('eye');
+  const COLS = 96, ROWS = 25;
+  const RAMP = ' .:-=+*#%@';
+  const cx = (COLS - 1) / 2, cy = (ROWS - 1) / 2;
+  const rx = COLS / 2 - 1, ry = ROWS / 2 - 1;
+  const ASPECT = 1.7;           // one row ≈ 1.7 cols wide, so circles stay round
+  const IRIS = 11, PUPIL = 3.4; // radii, in cols
+
+  let aperture = 1;             // 1 = wide open, 0 = shut
+  let look = { x: 0, y: 0 };    // -1..1 gaze target
+  let gaze = { x: 0, y: 0 };    // smoothed
+
+  function renderEye(t) {
+    const a = Math.max(aperture, 0.03);
+    // lid half-height per column, in rows: almond curve scaled by how open the eye is
+    const lid = Array.from({ length: COLS }, (_, x) => {
+      const u = (x - cx) / rx, s = 1 - u * u;
+      return s <= 0 ? -1 : Math.pow(s, 0.78) * ry * a;
+    });
+
+    // the two corners of the eye (canthi) get a glyph so the almond reads as closed
+    const MIN_H = 0.35, midRow = Math.round(cy);
+    const x0 = lid.findIndex((h) => h >= MIN_H);
+    const x1 = COLS - 1 - [...lid].reverse().findIndex((h) => h >= MIN_H);
+
+    const irisX = cx + gaze.x * (rx - IRIS - 4);
+    const irisY = cy + gaze.y * 3;
+    // keep the CSS radial gradient (red core → blue rim) centred on the moving iris
+    eyeEl.style.setProperty('--ix', (irisX / (COLS - 1) * 100).toFixed(1) + '%');
+    eyeEl.style.setProperty('--iy', (irisY / (ROWS - 1) * 100).toFixed(1) + '%');
+
+    let out = '';
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        const half = lid[x];
+        if (half < MIN_H) { out += ' '; continue; }
+        if (x === x0 || x === x1) { out += (y === midRow ? (x === x0 ? '<' : '>') : ' '); continue; }
+
+        // widen the lid band across neighbouring columns so a steep curve stays unbroken
+        const nb = [half, Math.max(0, lid[x - 1] ?? 0), Math.max(0, lid[x + 1] ?? 0)];
+        const lidLo = Math.min(...nb), lidHi = Math.max(...nb);
+        const dy = y - cy, ady = Math.abs(dy), u = (x - cx) / rx;
+
+        if (ady > lidHi + 0.55) {                                          // outside: lashes only
+          out += (dy < 0 && ady < lidHi + 1.7 && Math.abs(u) < 0.7 && x % 5 === 0) ? '|' : ' ';
+          continue;
+        }
+        if (ady > lidLo - 0.3) { out += (dy < 0 ? '_' : '‾'); continue; }   // eyelid
+
+        const dx = x - irisX, dv = (y - irisY) * ASPECT;
+        const d = Math.hypot(dx, dv);
+
+        // specular highlight — punched through the iris, upper left, like a real catchlight
+        if (Math.hypot(x - (irisX - IRIS * 0.42), (y - (irisY - 2.4)) * ASPECT) < 2.3) { out += ' '; continue; }
+
+        if (d < PUPIL) { out += '@'; continue; }                           // pupil
+        if (d < IRIS) {
+          if (d > IRIS - 1.1) { out += '%'; continue; }                    // limbal ring
+          const fibre = Math.sin(Math.atan2(dv, dx) * 13 + d * 0.7 + t) * 0.5 + 0.5;
+          const q = 1 - (d - PUPIL) / (IRIS - PUPIL);                      // 1 at pupil, 0 at rim
+          out += RAMP[Math.max(2, Math.min(8, 2 + Math.round((q * 0.7 + fibre * 0.22) * 7)))];
+          continue;
+        }
+        const r = ady / half;                                              // sclera contour shading
+        out += r > 0.86 ? ':' : r > 0.62 ? '.' : r > 0.42 ? '`' : ' ';
+      }
+      out += '\n';
+    }
+    eyeEl.textContent = out;
+  }
+
+  // blink: quick close/open, at randomised intervals. Driven by wall clock, not frame
+  // count, so a throttled/background tab can't leave the eye stuck half shut.
+  const BLINK_MS = 100;
+  let blinkStart = -Infinity;
+  function scheduleBlink() {
+    setTimeout(() => { blinkStart = performance.now(); scheduleBlink(); }, 2600 + Math.random() * 4200);
+  }
+
+  let last = performance.now();
+  function tick(now) {
+    const dt = Math.min(64, now - last); last = now;
+
+    // idle wander when the pointer isn't driving the gaze
+    const t = now / 1000;
+    const idleX = Math.sin(t * 0.42) * 0.32 + Math.sin(t * 0.17) * 0.13;
+    const idleY = Math.sin(t * 0.31) * 0.3;
+    const tx = look.active ? look.x : idleX;
+    const ty = look.active ? look.y : idleY;
+    gaze.x += (tx - gaze.x) * Math.min(1, dt / 140);
+    gaze.y += (ty - gaze.y) * Math.min(1, dt / 140);
+
+    const bt = now - blinkStart;
+    aperture = bt >= BLINK_MS * 2 ? 1
+      : bt < BLINK_MS ? 1 - bt / BLINK_MS          // closing
+      : (bt - BLINK_MS) / BLINK_MS;                // opening
+
+    renderEye(t * 0.6);   // slow drift on the iris fibres
+    requestAnimationFrame(tick);
+  }
+
+  renderEye(0);   // paint once up front: a tab opened in the background gets no frames
+
+  if (!reduce) {
+    scheduleBlink();
+    requestAnimationFrame(tick);
+    // frames stop while the tab is hidden, so leave a wide-open eye behind rather than
+    // freezing mid-blink, and never resume into a half-finished blink
+    document.addEventListener('visibilitychange', () => {
+      blinkStart = -Infinity;
+      if (document.hidden) { aperture = 1; renderEye(0); }
+    });
+    addEventListener('pointermove', (e) => {
+      const r = eyeEl.getBoundingClientRect();
+      look.x = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (r.width * 0.75)));
+      look.y = Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / (r.height * 1.6)));
+      look.active = true;
+    }, { passive: true });
+  }
+
+  /* ---------------- live CLI animation ---------------- */
+  const term = document.getElementById('term');
+  const cmd = (t) => ({ type: 'cmd', t });
+  const out = (t, cls) => ({ type: 'out', t, cls: cls || 'c-dim' });
+  const wait = (ms) => ({ type: 'wait', ms });
+  const clear = () => ({ type: 'clear' });
+
+  const SCRIPT = [
+    cmd('npm install -g prwatch'),
+    out('added 1 package in 3s', 'c-dim'),
+    out('prwatch@0.1.0 → prw', 'c-ok'),
+    wait(500),
+    cmd('gh auth status'),
+    out('✓ Logged in to github.com as adisagar2003', 'c-ok'),
+    wait(400),
+    cmd('prw'),
+    out('   ╭─ PRWATCH ─────────────────────────────╮', 'c-info'),
+    out('   │  Repos    adisagar2003/PRWatch        │', 'c-info'),
+    out('   │           acme/api                    │', 'c-info'),
+    out('   │  Agent    claude ✓                    │', 'c-info'),
+    out('   │  Status   idle · poll 3m              │', 'c-info'),
+    out('   ╰───────────────────────────────────────╯', 'c-info'),
+    wait(900),
+    cmd('prw daemon'),
+    out('[09:41:02] daemon started · poll every 3m', 'c-dim'),
+    out('[09:41:02] watching 2 repos · agent=claude', 'c-dim'),
+    wait(900),
+    out('[09:44:03] new PR adisagar2003/PRWatch#42 “fix: retry on 429”', 'c-warn'),
+    out('[09:44:03] shallow clone → ~/.prwatch/cache/pr-42', 'c-dim'),
+    out('[09:44:09] rubric: .prwatch/rubric.md (repo override)', 'c-dim'),
+    out('[09:44:09] running claude …', 'c-info'),
+    wait(1100),
+    out('[09:45:38] review ready · 1 blocking · 2 nits', 'c-info'),
+    out('[09:45:39] posted comment → PRWatch#42', 'c-ok'),
+    out('[09:45:39] cache cleaned · ledger updated', 'c-dim'),
+    wait(1400),
+    out('[09:47:03] PRWatch#42 pushed 1 commit → already reviewed, skipping', 'c-dim'),
+    wait(2600),
+    clear(),
+  ];
+
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const CARET = '<span class="caret">&nbsp;</span>';
+  let buf = '';
+  const paint = () => { term.innerHTML = buf + CARET; term.scrollTop = term.scrollHeight; };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  async function typeLine(text) {
+    buf += '<span class="c-prompt">$</span> <span class="c-cmd">';
+    for (const ch of text) {
+      buf += esc(ch);
+      paint();
+      await sleep(28 + Math.random() * 45);
+    }
+    buf += '</span>\n';
+    paint();
+    await sleep(320);
+  }
+
+  async function run() {
+    if (reduce) {
+      buf = SCRIPT.filter((s) => s.type === 'cmd' || s.type === 'out')
+        .map((s) => s.type === 'cmd'
+          ? `<span class="c-prompt">$</span> <span class="c-cmd">${esc(s.t)}</span>`
+          : `<span class="${s.cls}">${esc(s.t)}</span>`)
+        .join('\n');
+      term.innerHTML = buf;
+      return;
+    }
+    for (;;) {
+      for (const step of SCRIPT) {
+        if (step.type === 'cmd') await typeLine(step.t);
+        else if (step.type === 'out') { buf += `<span class="${step.cls}">${esc(step.t)}</span>\n`; paint(); await sleep(190); }
+        else if (step.type === 'wait') await sleep(step.ms);
+        else { buf = ''; paint(); await sleep(500); }
+      }
+    }
+  }
+  run();
+
+  /* ---------------- copy install command ---------------- */
+  const btn = document.getElementById('copy-btn');
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById('install-cmd').textContent);
+      btn.textContent = 'COPIED';
+      setTimeout(() => (btn.textContent = 'COPY'), 1400);
+    } catch {
+      btn.textContent = 'CMD+C';
+    }
+  });
+})();
+</script>
+</body>
+</html>
