@@ -5,6 +5,7 @@ import { Panel, bar, sparkline } from './chrome.js';
 import { loadState, type State } from '../state.js';
 import { tailLog, parseLog, reviewHistogram, type LogEntry } from '../daemon/log.js';
 import { checkGhAuth } from '../forge/github.js';
+import { getAgent, type AgentAuth } from '../agents/index.js';
 import type { Config } from '../config.js';
 
 const REFRESH_MS = 2000;
@@ -21,18 +22,30 @@ function agoLabel(iso: string): string {
 }
 
 /** Live state + log, polled while the dashboard is mounted. */
-function useDaemonData() {
+function useDaemonData(agent: Config['agent']) {
   const [state, setState] = useState<State | null>(null);
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [ghOk, setGhOk] = useState<boolean | null>(null);
+  const [agentAuth, setAgentAuth] = useState<AgentAuth | null>(null);
 
-  // gh auth is slow and rarely changes — check it once.
+  // Both auth probes shell out and rarely change — check them once.
   useEffect(() => {
     checkGhAuth()
       .then(setGhOk)
       .catch(() => setGhOk(false));
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    getAgent(agent)
+      .checkAuth()
+      .then((a) => alive && setAgentAuth(a))
+      .catch(() => alive && setAgentAuth('unknown'));
+    return () => {
+      alive = false;
+    };
+  }, [agent]);
 
   useEffect(() => {
     let alive = true;
@@ -56,7 +69,7 @@ function useDaemonData() {
     };
   }, []);
 
-  return { state, entries, error, ghOk };
+  return { state, entries, error, ghOk, agentAuth };
 }
 
 export function Dashboard({
@@ -68,7 +81,7 @@ export function Dashboard({
   width: number;
   logHeight: number;
 }) {
-  const { state, entries, error, ghOk } = useDaemonData();
+  const { state, entries, error, ghOk, agentAuth } = useDaemonData(config.agent);
   const twoCol = width >= TWO_COL_MIN;
   const leftWidth = twoCol ? Math.floor(width / 2) : width;
   const rightWidth = twoCol ? width - leftWidth : width;
@@ -101,9 +114,7 @@ export function Dashboard({
             <StatusDot ok={ghOk} /> gh auth{' '}
             {ghOk === null ? 'checking…' : ghOk ? 'OK' : 'NOT LOGGED IN — `gh auth login`'}
           </Text>
-          <Text dimColor>
-            reviewing with <Text color={ui.info}>{config.agent}</Text>
-          </Text>
+          <AgentAuthLine agent={config.agent} auth={agentAuth} />
         </Panel>
       </Box>
 
@@ -115,6 +126,38 @@ export function Dashboard({
         <Activity entries={entries} width={width - 4} logHeight={logHeight} />
       </Panel>
     </Box>
+  );
+}
+
+/**
+ * Agent auth, in the same shape as the gh line. 'unknown' stays "installed" —
+ * claude has no auth-status command, and claiming OK would be a guess.
+ */
+function AgentAuthLine({ agent, auth }: { agent: Config['agent']; auth: AgentAuth | null }) {
+  if (auth === null)
+    return (
+      <Text>
+        <StatusDot ok={null} /> {agent} checking…
+      </Text>
+    );
+  if (auth === 'ok')
+    return (
+      <Text>
+        <StatusDot ok /> {agent} auth OK
+      </Text>
+    );
+  if (auth === 'unknown')
+    return (
+      <Text>
+        <StatusDot ok={null} /> {agent} installed <Text dimColor>(no auth check)</Text>
+      </Text>
+    );
+  const hint = auth === 'missing' ? `install ${agent}` : getAgent(agent).loginHint;
+  return (
+    <Text>
+      <StatusDot ok={false} /> {agent} {auth === 'missing' ? 'NOT FOUND' : 'NOT LOGGED IN'}
+      {hint === undefined ? '' : ` — \`${hint}\``}
+    </Text>
   );
 }
 
