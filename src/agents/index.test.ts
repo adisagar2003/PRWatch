@@ -64,6 +64,46 @@ describe('agent adapters', () => {
     expect(await agent.isInstalled()).toBe(false);
   });
 
+  it('checkAuth reports missing when the binary is not on PATH', async () => {
+    const agent = makeAgent('claude', 'definitely-not-a-real-binary-xyz', (p) => [p], {
+      args: ['login', 'status'],
+    });
+    expect(await agent.checkAuth()).toBe('missing');
+  });
+
+  it('checkAuth reports ok when the auth command exits zero', async () => {
+    const bin = await writeScript('authed', 'echo "Logged in using ChatGPT"');
+    const agent = makeAgent('codex', bin, (p) => [p], { args: ['login', 'status'] });
+    expect(await agent.checkAuth()).toBe('ok');
+  });
+
+  it('checkAuth reports not-authed when the auth command fails', async () => {
+    const bin = await writeScript('logged-out', 'echo "not logged in" >&2; exit 1');
+    const agent = makeAgent('codex', bin, (p) => [p], { args: ['login', 'status'] });
+    expect(await agent.checkAuth()).toBe('not-authed');
+  });
+
+  it('checkAuth reports unknown for an agent with no auth command', async () => {
+    const bin = await writeScript('no-auth-cmd', 'echo hi');
+    const agent = makeAgent('claude', bin, (p) => [p]);
+    expect(await agent.checkAuth()).toBe('unknown');
+  });
+
+  it('checkAuth honours an output predicate, so zero credentials is not "ok"', async () => {
+    const bin = await writeScript('empty-creds', 'echo "0 credentials"');
+    const agent = makeAgent('opencode', bin, (p) => [p], {
+      args: ['auth', 'list'],
+      ok: (out) => /[1-9]\d* credential/.test(out),
+    });
+    expect(await agent.checkAuth()).toBe('not-authed');
+  });
+
+  it('registry wires an auth check for codex and opencode', () => {
+    expect(getAgent('codex').hasAuthCheck).toBe(true);
+    expect(getAgent('opencode').hasAuthCheck).toBe(true);
+    expect(getAgent('claude').hasAuthCheck).toBe(false);
+  });
+
   it('registry exposes all three agents', () => {
     expect(agents.map((a) => a.name).sort()).toEqual(['claude', 'codex', 'opencode']);
     expect(getAgent('codex').name).toBe('codex');
