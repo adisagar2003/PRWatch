@@ -8,6 +8,7 @@ export interface Config {
   agent: AgentName;
   pollIntervalMinutes: number;
   agentTimeoutMinutes: number;
+  notifications: boolean;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -15,6 +16,7 @@ export const DEFAULT_CONFIG: Config = {
   agent: 'claude',
   pollIntervalMinutes: 3,
   agentTimeoutMinutes: 10,
+  notifications: true,
 };
 
 function validateConfig(c: unknown): Config {
@@ -46,6 +48,11 @@ function validateConfig(c: unknown): Config {
   // Validate agentTimeoutMinutes
   if (typeof merged.agentTimeoutMinutes !== 'number' || !Number.isFinite(merged.agentTimeoutMinutes) || merged.agentTimeoutMinutes <= 0) {
     throw new Error('agentTimeoutMinutes must be a finite number > 0');
+  }
+
+  // Validate notifications
+  if (typeof merged.notifications !== 'boolean') {
+    throw new Error('notifications must be a boolean');
   }
 
   return merged;

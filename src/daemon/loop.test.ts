@@ -3,8 +3,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { tick } from './loop.js';
-import { ensureRepoState, type State } from '../state.js';
-import { DEFAULT_CONFIG } from '../config.js';
+import { ensureRepoState, MAX_ATTEMPTS, type State } from '../state.js';
+import { DEFAULT_CONFIG, type Config } from '../config.js';
 import type { ForgeAdapter, PR } from '../forge/types.js';
 import type { AgentAdapter } from '../agents/index.js';
 
@@ -39,11 +39,14 @@ function fakeForge(prs: PR[]): ForgeAdapter {
 
 const okAgent: AgentAdapter = { name: 'claude', isInstalled: async () => true, review: async () => LONG_REVIEW };
 
-function makeDeps(forge: ForgeAdapter, agent: AgentAdapter, state: State) {
+function makeDeps(
+  forge: ForgeAdapter, agent: AgentAdapter, state: State, over: Partial<Config> = {},
+) {
   ensureRepoState(state, 'a/b', new Date('2026-07-21T00:00:00Z'));
   return {
     forge, agent, state,
-    config: { ...DEFAULT_CONFIG, repos: ['a/b'] },
+    notify: vi.fn(),
+    config: { ...DEFAULT_CONFIG, repos: ['a/b'], ...over },
     saveState: vi.fn(async () => {}),
     cacheRoot: path.join(tmp, 'cache'),
     log: () => {},
@@ -81,5 +84,39 @@ describe('tick', () => {
     const state: State = { lastTickAt: null, repos: {} };
     await tick(makeDeps(forge, okAgent, state));
     expect(state.lastTickAt).toBe('2026-07-23T00:00:00.000Z');
+  });
+
+  it('sends a desktop notification naming the PR when a review is posted', async () => {
+    const forge = fakeForge([mkPr(7, '2026-07-22T00:00:00Z')]);
+    const state: State = { lastTickAt: null, repos: {} };
+    const deps = makeDeps(forge, okAgent, state);
+    await tick(deps);
+    expect(deps.notify).toHaveBeenCalledWith('PRWatch', expect.stringContaining('a/b#7'));
+    expect(deps.notify).toHaveBeenCalledWith('PRWatch', expect.stringContaining('posted'));
+  });
+
+  it('notifies once a PR is given up on, not on every retryable failure', async () => {
+    const forge = fakeForge([mkPr(8, '2026-07-22T00:00:00Z')]);
+    const badAgent: AgentAdapter = {
+      name: 'claude', isInstalled: async () => true,
+      review: async () => { throw new Error('boom'); },
+    };
+    const state: State = { lastTickAt: null, repos: {} };
+    const deps = makeDeps(forge, badAgent, state);
+
+    await tick(deps);
+    expect(deps.notify).not.toHaveBeenCalled(); // retry still pending — log only
+
+    for (let i = 1; i < MAX_ATTEMPTS; i++) await tick(deps);
+    expect(deps.notify).toHaveBeenCalledTimes(1);
+    expect(deps.notify).toHaveBeenCalledWith('PRWatch', expect.stringContaining('failed'));
+  });
+
+  it('stays silent when notifications are disabled in config', async () => {
+    const forge = fakeForge([mkPr(9, '2026-07-22T00:00:00Z')]);
+    const state: State = { lastTickAt: null, repos: {} };
+    const deps = makeDeps(forge, okAgent, state, { notifications: false });
+    await tick(deps);
+    expect(deps.notify).not.toHaveBeenCalled();
   });
 });

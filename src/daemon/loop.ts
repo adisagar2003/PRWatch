@@ -12,6 +12,7 @@ import { prsNeedingReview } from './filter.js';
 import { runReviewJob } from './job.js';
 import { createLogger } from './log.js';
 import { killActiveProcessGroups } from '../run-command.js';
+import { notify } from '../notify.js';
 
 export interface TickDeps {
   forge: ForgeAdapter;
@@ -22,10 +23,12 @@ export interface TickDeps {
   cacheRoot: string;
   log: (msg: string) => void;
   now: () => Date;
+  notify: (title: string, message: string) => void;
 }
 
 export async function tick(deps: TickDeps): Promise<void> {
-  const { forge, agent, config, state, saveState, cacheRoot, log, now } = deps;
+  const { forge, agent, config, state, saveState, cacheRoot, log, now, notify: send } = deps;
+  const announce = (msg: string) => { if (config.notifications) send('PRWatch', msg); };
   const timeoutMs = config.agentTimeoutMinutes * 60_000;
 
   for (const repo of config.repos) {
@@ -39,8 +42,16 @@ export async function tick(deps: TickDeps): Promise<void> {
     }
     for (const pr of prsNeedingReview(prs, rs)) {
       const result = await runReviewJob({ forge, agent, cacheRoot, timeoutMs, log }, repo, pr);
-      if (result === 'failed') recordFailure(rs, pr.number);
-      else recordReviewed(rs, pr.number);
+      if (result === 'failed') {
+        recordFailure(rs, pr.number);
+        // Only once we've given up — retries would otherwise notify MAX_ATTEMPTS times.
+        if (rs.failed.includes(pr.number)) {
+          announce(`review failed for ${repo}#${pr.number} · ${pr.title}`);
+        }
+      } else {
+        recordReviewed(rs, pr.number);
+        if (result === 'posted') announce(`posted review for ${repo}#${pr.number} · ${pr.title}`);
+      }
       await saveState(state);
     }
   }
@@ -84,6 +95,7 @@ export async function startDaemon(): Promise<never> {
       cacheRoot: cacheDir(),
       log,
       now: () => new Date(),
+      notify,
     });
     await sleep(config.pollIntervalMinutes * 60_000);
   }

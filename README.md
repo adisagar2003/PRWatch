@@ -65,7 +65,8 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
   "repos": ["adisagar2003/PRWatch"],
   "agent": "claude",
   "pollIntervalMinutes": 3,
-  "agentTimeoutMinutes": 10
+  "agentTimeoutMinutes": 10,
+  "notifications": true
 }
 ```
 
@@ -75,6 +76,7 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
 | `agent` | `"claude"` | One of `claude`, `codex`, `opencode`. |
 | `pollIntervalMinutes` | `3` | How often open PRs are listed. |
 | `agentTimeoutMinutes` | `10` | Hard timeout per review; the agent process is killed past it. |
+| `notifications` | `true` | Desktop notification when a review is posted, or when one is abandoned after its retries (macOS `osascript`, Linux `notify-send`; no-op elsewhere). Set to `false` on headless machines. |
 
 ## Rubric
 

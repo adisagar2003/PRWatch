@@ -35,6 +35,16 @@ describe('config', () => {
     expect(c.pollIntervalMinutes).toBe(3);
   });
 
+  it('enables notifications by default', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ repos: ['a/b'] }));
+    expect((await loadConfig()).notifications).toBe(true);
+  });
+
+  it('rejects a non-boolean notifications value', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ notifications: 'yes' }));
+    await expect(loadConfig()).rejects.toThrow(/notifications must be a boolean/);
+  });
+
   it('rejects corrupt JSON', async () => {
     await fs.writeFile(path.join(tmp, 'config.json'), '{invalid json}');
     await expect(loadConfig()).rejects.toThrow(/invalid config at.*config\.json/);
