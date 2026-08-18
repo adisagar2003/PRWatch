@@ -3,7 +3,8 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { listUserRepos } from '../forge/github.js';
 import { fuzzyFilter } from './fuzzy.js';
-import { ui, Panel } from './ui.js';
+import { ui } from './ui.js';
+import { Panel, useTerminalWidth } from './chrome.js';
 
 const VISIBLE = 8;
 
@@ -20,6 +21,7 @@ export function RepoPicker({
 }) {
   const [repos, setRepos] = useState<string[] | null>(null); // null = loading
   const [failed, setFailed] = useState(false);
+  const width = Math.max(40, useTerminalWidth() - 2);
 
   useEffect(() => {
     let alive = true;
@@ -39,7 +41,7 @@ export function RepoPicker({
   if (failed) return <ManualEntry reason="couldn't list your repos via gh" onDone={onDone} />;
   if (repos === null)
     return (
-      <Panel title="Add a repo">
+      <Panel title="add a repo" width={width}>
         <Text dimColor>loading your repos…</Text>
       </Panel>
     );
@@ -50,6 +52,7 @@ export function RepoPicker({
 }
 
 function Picker({ repos, onDone }: { repos: string[]; onDone: (repo: string | null) => void }) {
+  const width = Math.max(40, useTerminalWidth() - 2);
   const [filter, setFilter] = useState('');
   const [cursor, setCursor] = useState(0);
 
@@ -71,7 +74,7 @@ function Picker({ repos, onDone }: { repos: string[]; onDone: (repo: string | nu
   const window = matches.slice(start, start + VISIBLE);
 
   return (
-    <Panel title={`Add a repo (${matches.length}/${repos.length})`}>
+    <Panel title={`add a repo · ${matches.length}/${repos.length}`} width={width}>
       <Box>
         <Text color={ui.info}>filter </Text>
         <Text dimColor>❯ </Text>
@@ -92,9 +95,10 @@ function Picker({ repos, onDone }: { repos: string[]; onDone: (repo: string | nu
 }
 
 function ManualEntry({ reason, onDone }: { reason: string; onDone: (repo: string | null) => void }) {
+  const width = Math.max(40, useTerminalWidth() - 2);
   const [value, setValue] = useState('');
   return (
-    <Panel title="Add a repo" borderColor={ui.warn}>
+    <Panel title="add a repo" width={width} color={ui.warn}>
       <Text color={ui.warn}>⚠ {reason} — enter it manually</Text>
       <Box>
         <Text color={ui.info}>owner/name </Text>

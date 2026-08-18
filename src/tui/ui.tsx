@@ -12,35 +12,6 @@ export const ui = {
   border: 'gray',
 } as const;
 
-// A grouped content box. Borders are used sparingly (one per screen) to keep
-// the chrome-vs-data ratio low.
-export function Panel({
-  title,
-  borderColor = ui.border,
-  children,
-}: {
-  title?: string;
-  borderColor?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Box
-      flexDirection="column"
-      alignSelf="flex-start"
-      borderStyle="round"
-      borderColor={borderColor}
-      paddingX={1}
-    >
-      {title !== undefined && (
-        <Text bold color={ui.info}>
-          {title}
-        </Text>
-      )}
-      {children}
-    </Box>
-  );
-}
-
 // Persistent key-hint bar. Keys are highlighted, labels dimmed.
 export function Footer({ hints }: { hints: Array<[string, string]> }) {
   return (
