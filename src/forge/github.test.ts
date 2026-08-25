@@ -18,14 +18,30 @@ describe('GitHubForge', () => {
       {
         number: 7, title: 'Fix bug', body: null,
         created_at: '2026-07-21T10:00:00Z',
-        head: { ref: 'fix/bug' }, user: { login: 'adi' },
+        head: { ref: 'fix/bug', sha: 'deadbee', repo: { full_name: 'a/b' } },
+        base: { ref: 'main' }, user: { login: 'adi' },
       },
     ]);
     const { exec } = fakeExec({ 'gh api repos/a/b/pulls': apiJson });
     const prs = await new GitHubForge(exec).listOpenPRs('a/b');
     expect(prs).toEqual([
-      { number: 7, title: 'Fix bug', body: '', createdAt: '2026-07-21T10:00:00Z', headRef: 'fix/bug', author: 'adi' },
+      {
+        number: 7, title: 'Fix bug', body: '', createdAt: '2026-07-21T10:00:00Z',
+        headRef: 'fix/bug', headSha: 'deadbee', baseRef: 'main', fromFork: false, author: 'adi',
+      },
     ]);
+  });
+
+  it('isConflicting is true only when GitHub says mergeable is false', async () => {
+    const cases: Array<[string, boolean]> = [
+      ['{"mergeable":false}', true],
+      ['{"mergeable":true}', false],
+      ['{"mergeable":null}', false], // still being computed — retry next tick
+    ];
+    for (const [json, expected] of cases) {
+      const { exec } = fakeExec({ 'gh api repos/a/b/pulls/7': json });
+      expect(await new GitHubForge(exec).isConflicting('a/b', 7)).toBe(expected);
+    }
   });
 
   it('clone shallow-clones then checks out the PR head via the fork-safe pull ref', async () => {

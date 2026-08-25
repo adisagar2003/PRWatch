@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { loadState, saveState, ensureRepoState, recordReviewed, recordFailure, MAX_ATTEMPTS } from './state.js';
+import {
+  loadState, saveState, ensureRepoState, recordReviewed, recordFailure, MAX_ATTEMPTS,
+  conflictAttemptsLeft, recordConflictFailure, pruneConflictAttempts, type RepoState,
+} from './state.js';
+import type { PR } from './forge/types.js';
 
 let tmp: string;
 
@@ -76,5 +80,32 @@ describe('state', () => {
     expect(entries).toContain('state.json');
     expect(entries.some((e) => e.endsWith('.tmp'))).toBe(false);
     expect(await loadState()).toEqual(s);
+  });
+
+  describe('conflict attempts', () => {
+    const rs = (): RepoState =>
+      ({ watchStartedAt: '2026-07-21T00:00:00.000Z', reviewed: [], failed: [], retries: {} });
+    const pr = (number: number, headSha: string) => ({ number, headSha }) as PR;
+
+    it('gives up after MAX_ATTEMPTS on one head SHA', () => {
+      const s = rs();
+      for (let i = 0; i < MAX_ATTEMPTS; i++) recordConflictFailure(s, 1, 'sha1');
+      expect(conflictAttemptsLeft(s, 1, 'sha1')).toBe(false);
+    });
+
+    it('a new head SHA earns a fresh attempt budget', () => {
+      const s = rs();
+      for (let i = 0; i < MAX_ATTEMPTS; i++) recordConflictFailure(s, 1, 'sha1');
+      expect(conflictAttemptsLeft(s, 1, 'sha2')).toBe(true);
+    });
+
+    it('prunes counters for PRs and SHAs that are no longer open', () => {
+      const s = rs();
+      recordConflictFailure(s, 1, 'sha1'); // still open, same SHA — kept
+      recordConflictFailure(s, 1, 'old');  // superseded SHA — dropped
+      recordConflictFailure(s, 2, 'sha2'); // PR closed — dropped
+      pruneConflictAttempts(s, [pr(1, 'sha1')]);
+      expect(s.conflictAttempts).toEqual({ '1@sha1': 1 });
+    });
   });
 });

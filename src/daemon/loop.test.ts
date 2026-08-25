@@ -23,7 +23,8 @@ afterEach(async () => {
 const LONG_REVIEW = 'Verdict: APPROVE. '.repeat(10);
 
 const mkPr = (n: number, createdAt: string): PR => ({
-  number: n, title: `PR ${n}`, body: '', createdAt, headRef: 'b', author: 'adi',
+  number: n, title: `PR ${n}`, body: '', createdAt,
+  headRef: 'b', headSha: 'sha1', baseRef: 'main', fromFork: false, author: 'adi',
 });
 
 function fakeForge(prs: PR[]): ForgeAdapter {
@@ -31,13 +32,17 @@ function fakeForge(prs: PR[]): ForgeAdapter {
     name: 'fake',
     listOpenPRs: async () => prs,
     isOpen: async () => true,
+    isConflicting: async () => false,
     clone: async (_r, _p, dir) => { await fs.mkdir(dir, { recursive: true }); },
     hasMarkerComment: async () => false,
     postComment: vi.fn(async () => {}),
   };
 }
 
-const okAgent: AgentAdapter = { name: 'claude', isInstalled: async () => true, review: async () => LONG_REVIEW };
+const okAgent: AgentAdapter = {
+  name: 'claude', hasAuthCheck: false, isInstalled: async () => true,
+  checkAuth: async () => 'unknown', review: async () => LONG_REVIEW,
+};
 
 function makeDeps(
   forge: ForgeAdapter, agent: AgentAdapter, state: State, over: Partial<Config> = {},
@@ -118,5 +123,28 @@ describe('tick', () => {
     const deps = makeDeps(forge, okAgent, state, { notifications: false });
     await tick(deps);
     expect(deps.notify).not.toHaveBeenCalled();
+  });
+});
+
+describe('tick conflict resolution', () => {
+  const fresh = (over: Partial<ForgeAdapter>) => {
+    const forge = { ...fakeForge([mkPr(1, '2026-07-22T00:00:00Z')]), ...over };
+    return forge as ForgeAdapter;
+  };
+
+  it('never asks about conflicts while autoResolveConflicts is off', async () => {
+    const isConflicting = vi.fn(async () => true);
+    const state: State = { lastTickAt: null, repos: {} };
+    await tick(makeDeps(fresh({ isConflicting }), okAgent, state));
+    expect(isConflicting).not.toHaveBeenCalled();
+  });
+
+  it('checks conflicts and records a failed attempt when enabled', async () => {
+    const isConflicting = vi.fn(async () => true);
+    const state: State = { lastTickAt: null, repos: {} };
+    // clone() makes an empty dir, so the merge blows up — the point is the wiring.
+    await tick(makeDeps(fresh({ isConflicting }), okAgent, state, { autoResolveConflicts: true }));
+    expect(isConflicting).toHaveBeenCalledWith('a/b', 1);
+    expect(state.repos['a/b'].conflictAttempts).toEqual({ '1@sha1': 1 });
   });
 });

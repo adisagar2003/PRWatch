@@ -75,6 +75,13 @@ describe('config', () => {
     await expect(loadConfig()).rejects.toThrow(/invalid config at.*agentTimeoutMinutes/);
   });
 
+  it('defaults autoResolveConflicts to off and rejects a non-boolean', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ repos: [] }));
+    expect((await loadConfig()).autoResolveConflicts).toBe(false);
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ autoResolveConflicts: 'yes' }));
+    await expect(loadConfig()).rejects.toThrow(/invalid config at.*autoResolveConflicts/);
+  });
+
   it('writes atomically: no leftover .tmp file, content round-trips', async () => {
     const c = { ...DEFAULT_CONFIG, repos: ['a/b'] };
     await saveConfig(c);

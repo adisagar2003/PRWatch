@@ -18,7 +18,8 @@ export interface AgentAdapter {
   loginHint?: string;
   isInstalled(): Promise<boolean>;
   checkAuth(): Promise<AgentAuth>;
-  review(opts: { cwd: string; prompt: string; timeoutMs: number }): Promise<string>;
+  /** `write: true` lets the agent edit files in cwd — needed to resolve conflicts, not to review. */
+  review(opts: { cwd: string; prompt: string; timeoutMs: number; write?: boolean }): Promise<string>;
 }
 
 const AUTH_TIMEOUT_MS = 10_000;
@@ -26,7 +27,7 @@ const AUTH_TIMEOUT_MS = 10_000;
 export function makeAgent(
   name: AgentName,
   bin: string,
-  buildArgs: (prompt: string) => string[],
+  buildArgs: (prompt: string, write: boolean) => string[],
   auth?: AuthCheck,
 ): AgentAdapter {
   return {
@@ -51,19 +52,23 @@ export function makeAgent(
         return 'not-authed';
       }
     },
-    review({ cwd, prompt, timeoutMs }) {
-      return runCommand(bin, buildArgs(prompt), { cwd, timeoutMs });
+    review({ cwd, prompt, timeoutMs, write = false }) {
+      return runCommand(bin, buildArgs(prompt, write), { cwd, timeoutMs });
     },
   };
 }
 
 export const agents: AgentAdapter[] = [
   // claude has no auth-status subcommand — installed is all we can honestly report.
-  makeAgent('claude', 'claude', (p) => ['-p', p]),
-  makeAgent('codex', 'codex', (p) => ['exec', p], {
+  makeAgent('claude', 'claude', (p, w) =>
+    w ? ['-p', '--permission-mode', 'acceptEdits', p] : ['-p', p]),
+  // `codex exec` sandboxes the workspace read-only unless told otherwise.
+  makeAgent('codex', 'codex', (p, w) =>
+    w ? ['exec', '--sandbox', 'workspace-write', p] : ['exec', p], {
     args: ['login', 'status'],
     login: 'codex login',
   }),
+  // `opencode run` already edits files; there is no read-only mode to opt out of.
   makeAgent('opencode', 'opencode', (p) => ['run', p], {
     args: ['auth', 'list'],
     // `auth list` exits 0 even with nothing stored; the count is the real answer.

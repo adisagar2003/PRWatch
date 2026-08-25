@@ -19,7 +19,10 @@ afterEach(async () => {
   await fs.rm(tmp, { recursive: true, force: true });
 });
 
-const pr: PR = { number: 5, title: 'T', body: 'B', createdAt: '2026-07-22T00:00:00Z', headRef: 'x', author: 'adi' };
+const pr: PR = {
+  number: 5, title: 'T', body: 'B', createdAt: '2026-07-22T00:00:00Z',
+  headRef: 'x', headSha: 'sha1', baseRef: 'main', fromFork: false, author: 'adi',
+};
 
 const LONG_REVIEW = 'Verdict: APPROVE. '.repeat(10); // > 50 chars
 
@@ -28,6 +31,7 @@ function fakeForge(over: Partial<ForgeAdapter> = {}): ForgeAdapter {
     name: 'fake',
     listOpenPRs: async () => [],
     isOpen: async () => true,
+    isConflicting: async () => false,
     clone: async (_repo, _pr, dir) => { await fs.mkdir(dir, { recursive: true }); },
     hasMarkerComment: async () => false,
     postComment: vi.fn(async () => {}),
@@ -36,7 +40,10 @@ function fakeForge(over: Partial<ForgeAdapter> = {}): ForgeAdapter {
 }
 
 function fakeAgent(review: () => Promise<string>): AgentAdapter {
-  return { name: 'claude', isInstalled: async () => true, review };
+  return {
+    name: 'claude', hasAuthCheck: false, isInstalled: async () => true,
+    checkAuth: async () => 'unknown', review,
+  };
 }
 
 function deps(forge: ForgeAdapter, agent: AgentAdapter) {

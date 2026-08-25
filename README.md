@@ -66,7 +66,8 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
   "agent": "claude",
   "pollIntervalMinutes": 3,
   "agentTimeoutMinutes": 10,
-  "notifications": true
+  "notifications": true,
+  "autoResolveConflicts": false
 }
 ```
 
@@ -76,7 +77,21 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
 | `agent` | `"claude"` | One of `claude`, `codex`, `opencode`. |
 | `pollIntervalMinutes` | `3` | How often open PRs are listed. |
 | `agentTimeoutMinutes` | `10` | Hard timeout per review; the agent process is killed past it. |
+| `autoResolveConflicts` | `false` | Off by default — it pushes commits. See [Auto-resolving merge conflicts](#auto-resolving-merge-conflicts). |
 | `notifications` | `true` | Desktop notification when a review is posted, or when one is abandoned after its retries (macOS `osascript`, Linux `notify-send`; no-op elsewhere). Set to `false` on headless machines. |
+
+## Auto-resolving merge conflicts
+
+Off by default. Turn it on with `5` in the TUI, or `"autoResolveConflicts": true`.
+
+Each tick, for every watched PR GitHub reports as conflicting, prwatch clones it, merges the base
+branch, hands the conflicted files to your agent, and — only if no conflict markers survive and git
+reports nothing unresolved — commits the merge and pushes it to the PR branch.
+
+It gives up (and notifies) after 3 failed attempts on a given head commit — a new push from the PR
+author earns a fresh 3 — and skips PRs from forks, which you cannot push to. **This writes to other
+people's branches**: the merge commit is authored by `PRWatch`, and a bad automated resolution is a
+real way to lose someone's changes. Leave it off for repos with outside contributors.
 
 ## Rubric
 

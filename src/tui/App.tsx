@@ -39,6 +39,7 @@ export function App({ initialConfig }: { initialConfig: Config }) {
     else if (input === '2') setScreen('agent');
     else if (input === '3') setScreen('repos');
     else if (input === '4') setExpanded((e) => !e);
+    else if (input === '5') update({ autoResolveConflicts: !config.autoResolveConflicts });
     else if (input === 'q') exit();
   });
 
@@ -111,6 +112,7 @@ export function App({ initialConfig }: { initialConfig: Config }) {
             ['2', 'agent'],
             ['3', 'repos'],
             ['4', expanded ? 'shrink log' : 'expand log'],
+            ['5', `auto-fix conflicts: ${config.autoResolveConflicts ? 'on' : 'off'}`],
             ['q', 'quit'],
           ]}
         />

@@ -54,7 +54,8 @@ export class GitHubForge implements ForgeAdapter {
     ]);
     const raw = JSON.parse(stdout) as Array<{
       number: number; title: string; body: string | null;
-      created_at: string; head: { ref: string }; user: { login: string };
+      created_at: string; head: { ref: string; sha: string; repo: { full_name: string } | null };
+      base: { ref: string }; user: { login: string };
     }>;
     return raw.map((p) => ({
       number: p.number,
@@ -62,6 +63,9 @@ export class GitHubForge implements ForgeAdapter {
       body: p.body ?? '',
       createdAt: p.created_at,
       headRef: p.head.ref,
+      headSha: p.head.sha,
+      baseRef: p.base.ref,
+      fromFork: p.head.repo?.full_name !== repo,
       author: p.user.login,
     }));
   }
@@ -69,6 +73,12 @@ export class GitHubForge implements ForgeAdapter {
   async isOpen(repo: string, pr: number): Promise<boolean> {
     const { stdout } = await this.exec('gh', ['api', `repos/${repo}/pulls/${pr}`]);
     return (JSON.parse(stdout) as { state: string }).state === 'open';
+  }
+
+  async isConflicting(repo: string, pr: number): Promise<boolean> {
+    const { stdout } = await this.exec('gh', ['api', `repos/${repo}/pulls/${pr}`]);
+    // mergeable is null while GitHub is still computing it — say no and retry next tick.
+    return (JSON.parse(stdout) as { mergeable: boolean | null }).mergeable === false;
   }
 
   async clone(repo: string, pr: number, dir: string): Promise<void> {

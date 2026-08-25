@@ -2,14 +2,15 @@ import { ensureDirs, cacheDir } from '../paths.js';
 import { loadConfig, type Config } from '../config.js';
 import {
   loadState, saveState as persistState, ensureRepoState,
-  recordReviewed, recordFailure, type State,
+  recordReviewed, recordFailure, recordConflictFailure, pruneConflictAttempts, type State,
 } from '../state.js';
 import { ensureHomeRubric } from '../rubric.js';
 import { GitHubForge, checkGhAuth } from '../forge/github.js';
 import { getAgent, type AgentAdapter } from '../agents/index.js';
 import type { ForgeAdapter } from '../forge/types.js';
-import { prsNeedingReview } from './filter.js';
+import { prsNeedingReview, prsNeedingConflictCheck } from './filter.js';
 import { runReviewJob } from './job.js';
+import { runConflictJob } from './conflict.js';
 import { createLogger } from './log.js';
 import { killActiveProcessGroups } from '../run-command.js';
 import { notify } from '../notify.js';
@@ -51,6 +52,19 @@ export async function tick(deps: TickDeps): Promise<void> {
       } else {
         recordReviewed(rs, pr.number);
         if (result === 'posted') announce(`posted review for ${repo}#${pr.number} · ${pr.title}`);
+      }
+      await saveState(state);
+    }
+
+    if (!config.autoResolveConflicts) continue;
+    pruneConflictAttempts(rs, prs);
+    for (const pr of prsNeedingConflictCheck(prs, rs)) {
+      const result = await runConflictJob({ forge, agent, cacheRoot, timeoutMs, log }, repo, pr);
+      if (result === 'failed') {
+        recordConflictFailure(rs, pr.number, pr.headSha);
+        announce(`could not resolve conflicts in ${repo}#${pr.number} · ${pr.title}`);
+      } else if (result === 'resolved') {
+        announce(`resolved conflicts in ${repo}#${pr.number} · ${pr.title}`);
       }
       await saveState(state);
     }
