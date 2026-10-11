@@ -85,8 +85,13 @@ describe('runConflictJob', () => {
       await fs.writeFile(path.join(cwd, 'file.txt'), 'moved base + feature\n');
       return 'resolved file.txt';
     });
-    expect(await runConflictJob(deps(forge(), resolver), 'a/b', pr)).toBe('resolved');
+    let reported = '';
+    const d = { ...deps(forge(), resolver), onPushed: (sha: string) => { reported = sha; } };
+    expect(await runConflictJob(d, 'a/b', pr)).toBe('resolved');
     expect(await pushedContent()).toBe('moved base + feature\n');
+    // The SHA it reports is the one now on the branch, so the loop can skip re-reviewing it.
+    const tip = await runCommand('git', ['rev-parse', 'feature'], { cwd: origin, timeoutMs: 30_000 });
+    expect(reported).toBe(tip.trim());
     await expect(fs.readdir(path.join(tmp, 'cache'))).resolves.toEqual([]);
   });
 

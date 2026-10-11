@@ -3,8 +3,8 @@ import path from 'node:path';
 import type { ForgeAdapter, PR } from '../forge/types.js';
 import type { AgentAdapter } from '../agents/index.js';
 import { resolveRubric } from '../rubric.js';
-import { buildPrompt } from '../prompt.js';
-import { MARKER } from '../forge/github.js';
+import { buildPrompt, reReviewNote } from '../prompt.js';
+import { MARKER, headMarker } from '../forge/github.js';
 
 export type JobResult = 'posted' | 'skipped-existing' | 'skipped-closed' | 'failed';
 
@@ -24,7 +24,10 @@ function attribution(agentName: string): string {
   return `\n\n---\n👁️🌀 *By [PRWatch](${PRWATCH_URL}) · reviewed with \`${agentName}\`*`;
 }
 
-export async function runReviewJob(deps: JobDeps, repo: string, pr: PR): Promise<JobResult> {
+/** sinceSha set = re-review: only the commits after the head the previous review covered. */
+export async function runReviewJob(
+  deps: JobDeps, repo: string, pr: PR, sinceSha?: string,
+): Promise<JobResult> {
   const { forge, agent, cacheRoot, timeoutMs, log } = deps;
 
   const dir = path.join(cacheRoot, `${repo.replace('/', '-')}-${pr.number}`);
@@ -35,7 +38,8 @@ export async function runReviewJob(deps: JobDeps, repo: string, pr: PR): Promise
       return 'skipped-closed';
     }
 
-    if (await forge.hasMarkerComment(repo, pr.number)) {
+    const existing = sinceSha === undefined ? MARKER : headMarker(pr.headSha);
+    if (await forge.hasMarkerComment(repo, pr.number, existing)) {
       log(`skip ${repo}#${pr.number}: prwatch comment already exists`);
       return 'skipped-existing';
     }
@@ -45,7 +49,7 @@ export async function runReviewJob(deps: JobDeps, repo: string, pr: PR): Promise
     log(`reviewing ${repo}#${pr.number} "${pr.title}" with ${agent.name}`);
     await forge.clone(repo, pr.number, dir);
     const rubric = await resolveRubric(dir);
-    const prompt = buildPrompt(rubric, repo, pr);
+    const prompt = buildPrompt(rubric, repo, pr) + (sinceSha ? reReviewNote(sinceSha) : '');
     const output = (await agent.review({ cwd: dir, prompt, timeoutMs })).trim();
     if (output.length < MIN_OUTPUT_CHARS) {
       throw new Error(`agent output too short (${output.length} chars)`);
@@ -54,8 +58,12 @@ export async function runReviewJob(deps: JobDeps, repo: string, pr: PR): Promise
       log(`skip ${repo}#${pr.number}: closed or merged while the review ran`);
       return 'skipped-closed';
     }
-    await forge.postComment(repo, pr.number, `${MARKER}\n${output}${attribution(agent.name)}`);
-    log(`posted review for ${repo}#${pr.number}`);
+    const heading = sinceSha ? `**🔁 Re-review** — changes since \`${sinceSha.slice(0, 7)}\`\n\n` : '';
+    await forge.postComment(
+      repo, pr.number,
+      `${MARKER}\n${headMarker(pr.headSha)}\n${heading}${output}${attribution(agent.name)}`,
+    );
+    log(`posted review for ${repo}#${pr.number}${sinceSha ? ` (re-review since ${sinceSha.slice(0, 7)})` : ''}`);
     return 'posted';
   } catch (e) {
     log(`FAILED ${repo}#${pr.number}: ${(e as Error).message}`);

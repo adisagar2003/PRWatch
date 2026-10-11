@@ -5,6 +5,8 @@ import { runCommand } from '../run-command.js';
 import type { ForgeAdapter, PR } from './types.js';
 
 export const MARKER = '<!-- prwatch -->';
+/** Second, per-head marker: lets a re-review check it hasn't already posted for this exact commit. */
+export const headMarker = (sha: string) => `<!-- prwatch head=${sha} -->`;
 
 export type Exec = (
   cmd: string,
@@ -91,13 +93,13 @@ export class GitHubForge implements ForgeAdapter {
     await this.exec('git', ['checkout', 'prwatch-pr'], { cwd: dir });
   }
 
-  async hasMarkerComment(repo: string, pr: number): Promise<boolean> {
+  async hasMarkerComment(repo: string, pr: number, marker = MARKER): Promise<boolean> {
     const { stdout } = await this.exec('gh', [
       'api',
       `repos/${repo}/issues/${pr}/comments?per_page=100`,
     ]);
     const comments = JSON.parse(stdout) as Array<{ body?: string }>;
-    return comments.some((c) => typeof c.body === 'string' && c.body.includes(MARKER));
+    return comments.some((c) => typeof c.body === 'string' && c.body.includes(marker));
   }
 
   async postComment(repo: string, pr: number, body: string): Promise<void> {

@@ -22,6 +22,7 @@ export interface ForgeAdapter {
   isConflicting(repo: string, pr: number): Promise<boolean>;
   /** Shallow-clone the repo into dir and check out the PR branch. */
   clone(repo: string, pr: number, dir: string): Promise<void>;
-  hasMarkerComment(repo: string, pr: number): Promise<boolean>;
+  /** Whether any comment contains marker (default: any prwatch review). */
+  hasMarkerComment(repo: string, pr: number, marker?: string): Promise<boolean>;
   postComment(repo: string, pr: number, body: string): Promise<void>;
 }

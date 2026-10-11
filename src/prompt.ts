@@ -39,3 +39,14 @@ Title: ${pr.title}
 
 When done, output one line: the files you resolved.`;
 }
+
+/** Appended to a review prompt when the PR was already reviewed at sinceSha. */
+export function reReviewNote(sinceSha: string): string {
+  return `
+
+This PR was already reviewed at commit ${sinceSha}. Review ONLY what changed since then:
+  git log --oneline ${sinceSha}..HEAD
+  git diff ${sinceSha} HEAD
+Ignore changes that came in by merging the base branch. Do not repeat issues from the earlier review that the new commits did not touch.
+If \`git merge-base --is-ancestor ${sinceSha} HEAD\` fails (history was rewritten, or the commit is outside the clone), review the full diff instead and say so in the Summary.`;
+}

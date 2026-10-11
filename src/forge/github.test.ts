@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { GitHubForge, MARKER, type Exec } from './github.js';
+import { GitHubForge, MARKER, headMarker, type Exec } from './github.js';
 
 function fakeExec(responses: Record<string, string>): { exec: Exec; calls: string[][] } {
   const calls: string[][] = [];
@@ -65,6 +65,14 @@ describe('GitHubForge', () => {
     const comments = JSON.stringify([{ body: 'hi' }, { body: `${MARKER}\nold review` }]);
     const { exec } = fakeExec({ 'gh api repos/a/b/issues/7/comments': comments });
     expect(await new GitHubForge(exec).hasMarkerComment('a/b', 7)).toBe(true);
+  });
+
+  it('hasMarkerComment can look for a specific head marker', async () => {
+    const comments = JSON.stringify([{ body: `${MARKER}\n${headMarker('sha1')}\nold` }]);
+    const { exec } = fakeExec({ 'gh api repos/a/b/issues/7/comments': comments });
+    const forge = new GitHubForge(exec);
+    expect(await forge.hasMarkerComment('a/b', 7, headMarker('sha1'))).toBe(true);
+    expect(await forge.hasMarkerComment('a/b', 7, headMarker('sha2'))).toBe(false);
   });
 
   it('hasMarkerComment is false without the marker', async () => {

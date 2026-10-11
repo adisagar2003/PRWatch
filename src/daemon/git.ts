@@ -62,3 +62,7 @@ export async function commitMerge(dir: string, git: Git = defaultGit): Promise<v
 export async function pushBranch(dir: string, headRef: string, git: Git = defaultGit): Promise<void> {
   await git(['push', 'origin', `HEAD:refs/heads/${headRef}`], dir);
 }
+
+export async function headSha(dir: string, git: Git = defaultGit): Promise<string> {
+  return (await git(['rev-parse', 'HEAD'], dir)).trim();
+}

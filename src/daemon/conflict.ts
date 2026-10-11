@@ -4,7 +4,7 @@ import type { ForgeAdapter, PR } from '../forge/types.js';
 import type { AgentAdapter } from '../agents/index.js';
 import { buildConflictPrompt } from '../prompt.js';
 import {
-  mergeBase, unmergedPaths, hasConflictMarkers, stageAll, commitMerge, pushBranch,
+  mergeBase, unmergedPaths, hasConflictMarkers, stageAll, commitMerge, pushBranch, headSha,
 } from './git.js';
 
 export type ConflictResult = 'resolved' | 'skipped' | 'failed';
@@ -15,6 +15,8 @@ export interface ConflictDeps {
   cacheRoot: string;
   timeoutMs: number;
   log: (msg: string) => void;
+  /** Called with the merge commit's SHA once it is on the PR branch. */
+  onPushed?: (sha: string) => void;
 }
 
 /** Merge the base branch into the PR branch, have the agent fix conflicts, push the result. */
@@ -59,6 +61,7 @@ export async function runConflictJob(
 
     await commitMerge(dir);
     await pushBranch(dir, pr.headRef);
+    deps.onPushed?.(await headSha(dir));
     log(`pushed conflict resolution for ${repo}#${pr.number}`);
     return 'resolved';
   } catch (e) {

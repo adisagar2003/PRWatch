@@ -30,7 +30,7 @@ prwatch is a small daemon + TUI (terminal user interface — a keyboard-driven a
 |---|---|
 | 💸 **Zero CI cost** | Nothing runs in GitHub Actions. The review happens on your machine with the agent subscription you already have. |
 | 🤖 **Your agent, your rules** | `claude`, `codex`, or `opencode`, auto-detected from your `PATH`. The rubric is a markdown file you own. |
-| 🧹 **No backlog, no spam** | Only PRs opened after you start watching. Each PR reviewed exactly once. Temp clones always deleted. |
+| 🧹 **No backlog, no spam** | Only PRs opened after you start watching. One review per commit pushed — never twice for the same code. Temp clones always deleted. |
 
 ## Prerequisites
 
@@ -54,7 +54,7 @@ prw service install   # optional: run at login via launchd/systemd
 
 <img width="1502" alt="prwatch TUI" src="https://github.com/user-attachments/assets/4c1b8abc-f259-4fc9-955a-3e49e5c229df" />
 
-Only PRs opened **after** you start watching a repo are reviewed — no backlog spam. Each PR gets reviewed once (the marker comment `<!-- prwatch -->` guarantees idempotency — running twice can't produce a second review).
+Only PRs opened **after** you start watching a repo are reviewed — no backlog spam. Each PR is reviewed when it opens, then **re-reviewed after each push**, covering only the new commits (turn off with `"reReviewOnPush": false`). Every comment carries hidden `<!-- prwatch -->` and `<!-- prwatch head=SHA -->` markers, so running twice can't post a second review of the same commit. prwatch's own conflict-resolution merges never trigger a re-review.
 
 ## Configuration
 
@@ -67,7 +67,8 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
   "pollIntervalMinutes": 3,
   "agentTimeoutMinutes": 10,
   "notifications": true,
-  "autoResolveConflicts": false
+  "autoResolveConflicts": false,
+  "reReviewOnPush": true
 }
 ```
 
@@ -78,6 +79,7 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
 | `pollIntervalMinutes` | `3` | How often open PRs are listed. |
 | `agentTimeoutMinutes` | `10` | Hard timeout per review; the agent process is killed past it. |
 | `autoResolveConflicts` | `false` | Off by default — it pushes commits. See [Auto-resolving merge conflicts](#auto-resolving-merge-conflicts). |
+| `reReviewOnPush` | `true` | After the first review, review again whenever the author pushes, scoped to the commits since the last review. Pushes between polls are batched into one re-review. |
 | `notifications` | `true` | Desktop notification when a review is posted, or when one is abandoned after its retries (macOS `osascript`, Linux `notify-send`; no-op elsewhere). Set to `false` on headless machines. |
 
 ## Auto-resolving merge conflicts

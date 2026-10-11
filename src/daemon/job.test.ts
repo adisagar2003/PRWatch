@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { runReviewJob } from './job.js';
-import { MARKER } from '../forge/github.js';
+import { MARKER, headMarker } from '../forge/github.js';
 import type { ForgeAdapter, PR } from '../forge/types.js';
 import type { AgentAdapter } from '../agents/index.js';
 
@@ -49,6 +49,36 @@ function fakeAgent(review: () => Promise<string>): AgentAdapter {
 function deps(forge: ForgeAdapter, agent: AgentAdapter) {
   return { forge, agent, cacheRoot: path.join(tmp, 'cache'), timeoutMs: 5000, log: () => {} };
 }
+
+describe('runReviewJob: re-review', () => {
+  const bodyOf = (f: ForgeAdapter) =>
+    (f.postComment as ReturnType<typeof vi.fn>).mock.calls[0][2] as string;
+
+  it('stamps every review with a marker for the head it covered', async () => {
+    const forge = fakeForge();
+    await runReviewJob(deps(forge, fakeAgent(async () => LONG_REVIEW)), 'a/b', pr);
+    expect(bodyOf(forge)).toContain(headMarker('sha1'));
+    expect(bodyOf(forge)).not.toContain('Re-review');
+  });
+
+  it('labels a re-review and asks the agent for the changes since the old SHA', async () => {
+    const forge = fakeForge();
+    let prompt = '';
+    const agent = fakeAgent(async () => LONG_REVIEW);
+    agent.review = async (o) => { prompt = o.prompt; return LONG_REVIEW; };
+    expect(await runReviewJob(deps(forge, agent), 'a/b', pr, 'old1234567')).toBe('posted');
+    expect(prompt).toContain('git diff old1234567 HEAD');
+    expect(bodyOf(forge)).toContain('🔁 Re-review');
+    expect(bodyOf(forge)).toContain('`old1234`');
+  });
+
+  it('re-review checks for the head marker, not any prwatch comment', async () => {
+    const seen: (string | undefined)[] = [];
+    const forge = fakeForge({ hasMarkerComment: async (_r, _p, m) => { seen.push(m); return false; } });
+    await runReviewJob(deps(forge, fakeAgent(async () => LONG_REVIEW)), 'a/b', pr, 'old');
+    expect(seen).toEqual([headMarker('sha1')]);
+  });
+});
 
 describe('runReviewJob', () => {
   it('posts a marked comment and cleans the clone', async () => {
