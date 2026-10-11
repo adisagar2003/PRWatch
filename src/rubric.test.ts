@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveRubric, ensureHomeRubric, DEFAULT_RUBRIC, LEGACY_DEFAULT_RUBRIC } from './rubric.js';
+import {
+  resolveRubric,
+  ensureHomeRubric,
+  DEFAULT_RUBRIC,
+  LEGACY_DEFAULT_RUBRIC,
+  CANDID_V1_RUBRIC,
+} from './rubric.js';
 import { rubricPath } from './paths.js';
 
 let tmp: string;
@@ -51,6 +57,12 @@ describe('resolveRubric', () => {
     expect(await fs.readFile(rubricPath(), 'utf8')).toBe(DEFAULT_RUBRIC);
   });
 
+  it('ensureHomeRubric migrates an un-customised candid v1 rubric to the new default', async () => {
+    await fs.writeFile(rubricPath(), CANDID_V1_RUBRIC);
+    await ensureHomeRubric();
+    expect(await fs.readFile(rubricPath(), 'utf8')).toBe(DEFAULT_RUBRIC);
+  });
+
   it('ensureHomeRubric leaves a user-edited legacy rubric alone', async () => {
     const edited = LEGACY_DEFAULT_RUBRIC + '\n\nExtra house rule: no TODOs.\n';
     await fs.writeFile(rubricPath(), edited);
@@ -66,6 +78,12 @@ describe('resolveRubric', () => {
     expect(DEFAULT_RUBRIC).toContain('**Confidence:** Safe ✓ | Verify ⚡ | Careful ⚠️');
     expect(DEFAULT_RUBRIC).toContain('**🔥 Critical Issues**');
     expect(DEFAULT_RUBRIC).toContain("**✅ What's Good**");
+    expect(DEFAULT_RUBRIC).toContain('**🎯 Merge Confidence:** High 🟢 | Medium 🟡 | Low 🔴');
+    expect(DEFAULT_RUBRIC).toContain('**🧭 Review Order**');
+    expect(DEFAULT_RUBRIC).toContain('```mermaid\nflowchart TD');
+    expect(DEFAULT_RUBRIC).toContain('classDef risk fill:#ffebe9,stroke:#d1242f,color:#1f2328');
+    expect(DEFAULT_RUBRIC).toContain('classDef clean fill:#dafbe1,stroke:#1a7f37,color:#1f2328');
+    expect(DEFAULT_RUBRIC).toContain('subgraph');
   });
 
   it('throws when repo rubric path is a directory', async () => {
