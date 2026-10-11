@@ -6,6 +6,9 @@ export type Git = (args: string[], cwd: string) => Promise<string>;
 
 const GIT_TIMEOUT_MS = 120_000;
 
+/** Merging needs a committer identity, and a fresh machine (CI, a Linux service) may have none. */
+const IDENTITY = ['-c', 'user.name=PRWatch', '-c', 'user.email=prwatch@users.noreply.github.com'];
+
 export const defaultGit: Git = (args, cwd) =>
   runCommand('git', args, { cwd, timeoutMs: GIT_TIMEOUT_MS });
 
@@ -22,7 +25,7 @@ export async function mergeBase(
   await git(['fetch', '--unshallow', 'origin'], dir).catch(() => '' /* already complete */);
   await git(['fetch', 'origin', `${baseRef}:refs/remotes/origin/${baseRef}`], dir);
   try {
-    await git(['merge', '--no-edit', `origin/${baseRef}`], dir);
+    await git([...IDENTITY, 'merge', '--no-edit', `origin/${baseRef}`], dir);
     return 'clean';
   } catch (e) {
     if ((await unmergedPaths(dir, git)).length > 0) return 'conflicted';
@@ -52,11 +55,7 @@ export async function stageAll(dir: string, git: Git = defaultGit): Promise<void
 }
 
 export async function commitMerge(dir: string, git: Git = defaultGit): Promise<void> {
-  await git(
-    ['-c', 'user.name=PRWatch', '-c', 'user.email=prwatch@users.noreply.github.com',
-     'commit', '--no-edit'],
-    dir,
-  );
+  await git([...IDENTITY, 'commit', '--no-edit'], dir);
 }
 
 export async function pushBranch(dir: string, headRef: string, git: Git = defaultGit): Promise<void> {
