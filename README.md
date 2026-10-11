@@ -77,6 +77,7 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
 | `pollIntervalMinutes` | `3` | How often open PRs are listed. |
 | `agentTimeoutMinutes` | `10` | Hard timeout per review; the agent process is killed past it. |
 | `notifications` | `true` | Desktop notification when a review is posted, or when one is abandoned after its retries (macOS `osascript`, Linux `notify-send`; no-op elsewhere). Set to `false` on headless machines. |
+| `lineComments` | `false` | Also post issues as comments on the changed lines, with one-click **suggested fixes**. The summary comment is unchanged. Comments on lines outside the diff are dropped. |
 
 ## Rubric
 

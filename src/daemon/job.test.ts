@@ -21,12 +21,22 @@ afterEach(async () => {
 
 const pr: PR = { number: 5, title: 'T', body: 'B', createdAt: '2026-07-22T00:00:00Z', headRef: 'x', author: 'adi' };
 
+const DIFF = `diff --git a/a.ts b/a.ts
+--- a/a.ts
++++ b/a.ts
+@@ -1,1 +1,2 @@
+ one
++two
+`;
+
 const LONG_REVIEW = 'Verdict: APPROVE. '.repeat(10); // > 50 chars
 
 function fakeForge(over: Partial<ForgeAdapter> = {}): ForgeAdapter {
   return {
     name: 'fake',
     listOpenPRs: async () => [],
+    getDiff: async () => DIFF,
+    postLineComments: vi.fn(async () => {}),
     isOpen: async () => true,
     clone: async (_repo, _pr, dir) => { await fs.mkdir(dir, { recursive: true }); },
     hasMarkerComment: async () => false,
@@ -42,6 +52,47 @@ function fakeAgent(review: () => Promise<string>): AgentAdapter {
 function deps(forge: ForgeAdapter, agent: AgentAdapter) {
   return { forge, agent, cacheRoot: path.join(tmp, 'cache'), timeoutMs: 5000, log: () => {} };
 }
+
+describe('runReviewJob: line comments', () => {
+  const withComments = LONG_REVIEW + '\n\n```prwatch-comments\n' + JSON.stringify([
+    { path: 'a.ts', line: 2, body: 'Rename', suggestion: 'const two = 2;' },
+    { path: 'a.ts', line: 40, body: 'not in the diff' },
+  ]) + '\n```';
+  const on = (f: ForgeAdapter, review: () => Promise<string>) =>
+    ({ ...deps(f, fakeAgent(review)), lineComments: true });
+
+  it('posts the summary without the JSON, then the line comments that are in the diff', async () => {
+    const forge = fakeForge();
+    expect(await runReviewJob(on(forge, async () => withComments), 'a/b', pr)).toBe('posted');
+    const body = (forge.postComment as ReturnType<typeof vi.fn>).mock.calls[0][2] as string;
+    expect(body).not.toContain('prwatch-comments');
+    const sent = (forge.postLineComments as ReturnType<typeof vi.fn>).mock.calls[0][2];
+    expect(sent).toEqual([{ path: 'a.ts', line: 2, body: 'Rename\n\n```suggestion\nconst two = 2;\n```' }]);
+  });
+
+  it('asks the agent for line comments only when enabled', async () => {
+    const prompts: string[] = [];
+    const agent = fakeAgent(async () => LONG_REVIEW);
+    agent.review = async (o) => { prompts.push(o.prompt); return LONG_REVIEW; };
+    await runReviewJob(deps(fakeForge(), agent), 'a/b', pr);
+    await runReviewJob({ ...deps(fakeForge(), agent), lineComments: true }, 'a/b', pr);
+    expect(prompts[0]).not.toContain('prwatch-comments');
+    expect(prompts[1]).toContain('prwatch-comments');
+  });
+
+  it('still counts as posted when the line comments fail — the summary is the review', async () => {
+    const forge = fakeForge({ postLineComments: vi.fn(async () => { throw new Error('422'); }) });
+    expect(await runReviewJob(on(forge, async () => withComments), 'a/b', pr)).toBe('posted');
+    expect(forge.postComment).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips the line-comment call when none survive the diff check', async () => {
+    const forge = fakeForge();
+    const offDiff = LONG_REVIEW + '\n\n```prwatch-comments\n[{"path":"z.ts","line":1,"body":"b"}]\n```';
+    await runReviewJob(on(forge, async () => offDiff), 'a/b', pr);
+    expect(forge.postLineComments).not.toHaveBeenCalled();
+  });
+});
 
 describe('runReviewJob', () => {
   it('posts a marked comment and cleans the clone', async () => {

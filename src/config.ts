@@ -9,6 +9,8 @@ export interface Config {
   pollIntervalMinutes: number;
   agentTimeoutMinutes: number;
   notifications: boolean;
+  /** Also post issues as comments on the changed lines, with one-click suggested fixes. */
+  lineComments: boolean;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -17,6 +19,7 @@ export const DEFAULT_CONFIG: Config = {
   pollIntervalMinutes: 3,
   agentTimeoutMinutes: 10,
   notifications: true,
+  lineComments: false,
 };
 
 function validateConfig(c: unknown): Config {
@@ -48,6 +51,10 @@ function validateConfig(c: unknown): Config {
   // Validate agentTimeoutMinutes
   if (typeof merged.agentTimeoutMinutes !== 'number' || !Number.isFinite(merged.agentTimeoutMinutes) || merged.agentTimeoutMinutes <= 0) {
     throw new Error('agentTimeoutMinutes must be a finite number > 0');
+  }
+
+  if (typeof merged.lineComments !== 'boolean') {
+    throw new Error('lineComments must be a boolean');
   }
 
   // Validate notifications
