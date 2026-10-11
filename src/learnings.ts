@@ -1,0 +1,35 @@
+// Team "learnings": short notes like "we allow default exports here" that every
+// review should respect, so prwatch stops re-flagging things the team already
+// decided. runReviewJob calls resolveLearnings and appends the result to the
+// agent prompt. Sources are the repo's committed .prwatch/learnings.md and the
+// user's ~/.prwatch/learnings.md; both are hand-edited markdown.
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { learningsPath } from './paths.js';
+
+/** Per file. Keeps a runaway learnings file from crowding the diff out of the prompt. */
+export const MAX_LEARNINGS_CHARS = 4000;
+
+async function readCapped(file: string): Promise<string> {
+  let text: string;
+  try {
+    text = (await fs.readFile(file, 'utf8')).trim();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return '';
+    throw new Error(`cannot read learnings at ${file}: ${(err as Error).message}`);
+  }
+  return text.length > MAX_LEARNINGS_CHARS ? `${text.slice(0, MAX_LEARNINGS_CHARS)}\n(truncated)` : text;
+}
+
+/** The prompt block to append, or '' when there are no learnings. Repo learnings come first. */
+export async function resolveLearnings(cloneDir: string): Promise<string> {
+  const parts = [
+    await readCapped(path.join(cloneDir, '.prwatch', 'learnings.md')),
+    await readCapped(learningsPath()),
+  ].filter((p) => p !== '');
+  if (parts.length === 0) return '';
+  return `
+
+Team learnings — conventions this team has already decided. Do not report anything they allow, and follow them when suggesting fixes:
+${parts.join('\n\n')}`;
+}

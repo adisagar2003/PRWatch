@@ -54,6 +54,20 @@ describe('runReviewJob', () => {
     await expect(fs.readdir(path.join(tmp, 'cache'))).resolves.toEqual([]);
   });
 
+  it('adds team learnings from the checkout to the prompt', async () => {
+    let prompt = '';
+    const forge = fakeForge({
+      clone: async (_r, _p, dir) => {
+        await fs.mkdir(path.join(dir, '.prwatch'), { recursive: true });
+        await fs.writeFile(path.join(dir, '.prwatch', 'learnings.md'), '- snake_case is fine here');
+      },
+    });
+    const agent = fakeAgent(async () => LONG_REVIEW);
+    agent.review = async (o) => { prompt = o.prompt; return LONG_REVIEW; };
+    await runReviewJob(deps(forge, agent), 'a/b', pr);
+    expect(prompt).toContain('- snake_case is fine here');
+  });
+
   it('appends the PRWatch attribution footer naming the agent', async () => {
     const forge = fakeForge();
     await runReviewJob(deps(forge, fakeAgent(async () => LONG_REVIEW)), 'a/b', pr);

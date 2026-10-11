@@ -83,6 +83,20 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
 The default rubric lives at `~/.prwatch/rubric.md` — edit it freely.
 A repo can override it by committing `.prwatch/rubric.md` at its root.
 
+## Learnings
+
+Stop prwatch re-flagging things your team already decided. Write them as markdown bullets in:
+
+- `.prwatch/learnings.md` committed in the repo (shared with the team), and/or
+- `~/.prwatch/learnings.md` (yours, applies to every repo).
+
+```md
+- Default exports are fine in `src/pages/`.
+- We intentionally swallow errors in `telemetry.ts`.
+```
+
+Both are added to every review prompt (repo first, each capped at 4,000 characters). Like a repo rubric override, the repo file is read from the PR's own checkout, so a PR can change it — see Security.
+
 ## Security
 
 Watching a public repo means running your agent against untrusted input: the PR title/body, and the PR's own files (which can include agent-instruction files like `CLAUDE.md` that an attacker committed to influence your agent). Recommendations:
