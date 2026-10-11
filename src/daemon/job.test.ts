@@ -54,6 +54,14 @@ describe('runReviewJob', () => {
     await expect(fs.readdir(path.join(tmp, 'cache'))).resolves.toEqual([]);
   });
 
+  it('passes the configured review profile into the prompt', async () => {
+    let prompt = '';
+    const agent = fakeAgent(async () => LONG_REVIEW);
+    agent.review = async (opts) => { prompt = opts.prompt; return LONG_REVIEW; };
+    await runReviewJob({ ...deps(fakeForge(), agent), profile: 'quiet' }, 'a/b', pr);
+    expect(prompt).toContain('Review profile: quiet');
+  });
+
   it('appends the PRWatch attribution footer naming the agent', async () => {
     const forge = fakeForge();
     await runReviewJob(deps(forge, fakeAgent(async () => LONG_REVIEW)), 'a/b', pr);

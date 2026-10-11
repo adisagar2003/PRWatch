@@ -41,7 +41,9 @@ export async function tick(deps: TickDeps): Promise<void> {
       continue;
     }
     for (const pr of prsNeedingReview(prs, rs)) {
-      const result = await runReviewJob({ forge, agent, cacheRoot, timeoutMs, log }, repo, pr);
+      const result = await runReviewJob(
+        { forge, agent, cacheRoot, timeoutMs, log, profile: config.profile }, repo, pr,
+      );
       if (result === 'failed') {
         recordFailure(rs, pr.number);
         // Only once we've given up — retries would otherwise notify MAX_ATTEMPTS times.
