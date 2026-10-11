@@ -77,11 +77,24 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
 | `pollIntervalMinutes` | `3` | How often open PRs are listed. |
 | `agentTimeoutMinutes` | `10` | Hard timeout per review; the agent process is killed past it. |
 | `notifications` | `true` | Desktop notification when a review is posted, or when one is abandoned after its retries (macOS `osascript`, Linux `notify-send`; no-op elsewhere). Set to `false` on headless machines. |
+| `chat` | `false` | Answer `@prwatch …` questions in PR comments. See [Chat](#chat). |
 
 ## Rubric
 
 The default rubric lives at `~/.prwatch/rubric.md` — edit it freely.
 A repo can override it by committing `.prwatch/rubric.md` at its root.
+
+## Chat
+
+Off by default. Turn it on with `"chat": true`.
+
+Tag `@prwatch` in a comment on any open PR in a watched repo and prwatch replies with your agent's answer at the next poll:
+
+> @prwatch why does `retry()` not need a timeout here?
+
+- Only repo **owners, members and collaborators** get answers, so strangers on a public repo can't run your agent.
+- Only comments written after chat was switched on are answered. Each comment is answered once; a failed answer isn't retried, so tag again.
+- The agent runs read-only against a fresh clone of the PR, same as a review.
 
 ## Security
 

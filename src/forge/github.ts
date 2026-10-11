@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { runCommand } from '../run-command.js';
-import type { ForgeAdapter, PR } from './types.js';
+import type { ForgeAdapter, PR, PRComment } from './types.js';
 
 export const MARKER = '<!-- prwatch -->';
 
@@ -79,6 +79,26 @@ export class GitHubForge implements ForgeAdapter {
       cwd: dir,
     });
     await this.exec('git', ['checkout', 'prwatch-pr'], { cwd: dir });
+  }
+
+  async listCommentsSince(repo: string, since: string): Promise<PRComment[]> {
+    // ponytail: one page of 100. More comments than that in one poll interval get missed;
+    // paginate (--paginate) if a busy repo needs it.
+    const { stdout } = await this.exec('gh', [
+      'api',
+      `repos/${repo}/issues/comments?since=${since}&sort=created&direction=asc&per_page=100`,
+    ]);
+    const raw = JSON.parse(stdout) as Array<{
+      id: number; body?: string; user: { login: string } | null;
+      author_association: string; issue_url: string;
+    }>;
+    return raw.map((c) => ({
+      id: c.id,
+      pr: Number(c.issue_url.split('/').pop()),
+      body: c.body ?? '',
+      author: c.user?.login ?? 'ghost',
+      association: c.author_association,
+    }));
   }
 
   async hasMarkerComment(repo: string, pr: number): Promise<boolean> {

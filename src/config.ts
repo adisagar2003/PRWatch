@@ -9,6 +9,8 @@ export interface Config {
   pollIntervalMinutes: number;
   agentTimeoutMinutes: number;
   notifications: boolean;
+  /** Answer "@prwatch …" questions from repo collaborators in PR comments. */
+  chat: boolean;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -17,6 +19,7 @@ export const DEFAULT_CONFIG: Config = {
   pollIntervalMinutes: 3,
   agentTimeoutMinutes: 10,
   notifications: true,
+  chat: false,
 };
 
 function validateConfig(c: unknown): Config {
@@ -48,6 +51,10 @@ function validateConfig(c: unknown): Config {
   // Validate agentTimeoutMinutes
   if (typeof merged.agentTimeoutMinutes !== 'number' || !Number.isFinite(merged.agentTimeoutMinutes) || merged.agentTimeoutMinutes <= 0) {
     throw new Error('agentTimeoutMinutes must be a finite number > 0');
+  }
+
+  if (typeof merged.chat !== 'boolean') {
+    throw new Error('chat must be a boolean');
   }
 
   // Validate notifications

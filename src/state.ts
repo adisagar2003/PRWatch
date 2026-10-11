@@ -6,6 +6,10 @@ export interface RepoState {
   reviewed: number[];
   failed: number[];
   retries: Record<string, number>;
+  /** Chat: comments are listed from this ISO time on; unset = chat hasn't started for this repo. */
+  chatSince?: string;
+  /** Chat: highest comment id already handled, so re-listed comments aren't answered twice. */
+  chatCursor?: number;
 }
 
 export interface State {

@@ -30,6 +30,7 @@ function fakeForge(prs: PR[]): ForgeAdapter {
   return {
     name: 'fake',
     listOpenPRs: async () => prs,
+    listCommentsSince: async () => [],
     isOpen: async () => true,
     clone: async (_r, _p, dir) => { await fs.mkdir(dir, { recursive: true }); },
     hasMarkerComment: async () => false,
@@ -118,5 +119,41 @@ describe('tick', () => {
     const deps = makeDeps(forge, okAgent, state, { notifications: false });
     await tick(deps);
     expect(deps.notify).not.toHaveBeenCalled();
+  });
+
+  describe('chat', () => {
+    const mention = (id: number) => ({
+      id, pr: 1, body: '@prwatch explain', author: 'tm', association: 'OWNER',
+    });
+    const clock = (iso: string) => () => new Date(iso);
+
+    it('never reads comments while chat is off', async () => {
+      const forge = fakeForge([]);
+      const list = vi.fn(async () => []);
+      forge.listCommentsSince = list;
+      await tick(makeDeps(forge, okAgent, { lastTickAt: null, repos: {} }));
+      expect(list).not.toHaveBeenCalled();
+    });
+
+    it('first tick only sets a baseline, later ticks answer new mentions once', async () => {
+      const state: State = { lastTickAt: null, repos: {} };
+      const pr = mkPr(1, '2026-07-20T00:00:00Z'); // predates the watch: chat still works
+      const forge = fakeForge([pr]);
+      const since: string[] = [];
+      forge.listCommentsSince = async (_r, s) => { since.push(s); return [mention(5)]; };
+
+      const d1 = { ...makeDeps(forge, okAgent, state, { chat: true }), now: clock('2026-07-23T00:00:00Z') };
+      await tick(d1);
+      expect(since).toEqual([]);
+      expect(state.repos['a/b'].chatSince).toBe('2026-07-23T00:00:00.000Z');
+
+      const d2 = { ...makeDeps(forge, okAgent, state, { chat: true }), now: clock('2026-07-23T00:03:00Z') };
+      await tick(d2);
+      await tick(d2); // same comment returned again: cursor stops a second reply
+      // One minute of overlap so a comment landing mid-tick isn't missed.
+      expect(since[0]).toBe('2026-07-22T23:59:00.000Z');
+      expect(forge.postComment).toHaveBeenCalledTimes(1);
+      expect(state.repos['a/b'].chatCursor).toBe(5);
+    });
   });
 });

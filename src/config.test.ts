@@ -40,6 +40,15 @@ describe('config', () => {
     expect((await loadConfig()).notifications).toBe(true);
   });
 
+  it('keeps chat off by default (it lets others trigger your agent)', async () => {
+    expect((await loadConfig()).chat).toBe(false);
+  });
+
+  it('rejects a non-boolean chat value', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ chat: 'on' }));
+    await expect(loadConfig()).rejects.toThrow(/chat must be a boolean/);
+  });
+
   it('rejects a non-boolean notifications value', async () => {
     await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ notifications: 'yes' }));
     await expect(loadConfig()).rejects.toThrow(/notifications must be a boolean/);

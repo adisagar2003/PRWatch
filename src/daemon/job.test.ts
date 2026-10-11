@@ -27,6 +27,7 @@ function fakeForge(over: Partial<ForgeAdapter> = {}): ForgeAdapter {
   return {
     name: 'fake',
     listOpenPRs: async () => [],
+    listCommentsSince: async () => [],
     isOpen: async () => true,
     clone: async (_repo, _pr, dir) => { await fs.mkdir(dir, { recursive: true }); },
     hasMarkerComment: async () => false,

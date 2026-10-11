@@ -63,4 +63,15 @@ describe('GitHubForge', () => {
     expect(call.slice(0, 5)).toEqual(['gh', 'pr', 'comment', '7', '--repo']);
     expect(call).toContain('--body-file');
   });
+
+  it('listCommentsSince reads repo-wide comments once and maps them to PR numbers', async () => {
+    const json = JSON.stringify([{
+      id: 11, body: '@prwatch hi', user: { login: 'tm' }, author_association: 'MEMBER',
+      issue_url: 'https://api.github.com/repos/a/b/issues/7',
+    }]);
+    const { exec, calls } = fakeExec({ 'gh api repos/a/b/issues/comments': json });
+    const out = await new GitHubForge(exec).listCommentsSince('a/b', '2026-07-22T00:00:00.000Z');
+    expect(out).toEqual([{ id: 11, pr: 7, body: '@prwatch hi', author: 'tm', association: 'MEMBER' }]);
+    expect(calls[0].join(' ')).toContain('since=2026-07-22T00:00:00.000Z');
+  });
 });
