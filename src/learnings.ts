@@ -19,7 +19,16 @@ async function readCapped(file: string, root?: string): Promise<string> {
     if (root && !(await fs.realpath(file)).startsWith((await fs.realpath(root)) + path.sep)) {
       throw new Error('it resolves outside the checkout');
     }
-    text = (await fs.readFile(file, 'utf8')).trim();
+    // Read at most the cap's worth of bytes (UTF-8 is <= 4 bytes/char) so a huge
+    // file in a PR can't exhaust memory.
+    const handle = await fs.open(file, 'r');
+    try {
+      const buf = Buffer.alloc(MAX_LEARNINGS_CHARS * 4);
+      const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
+      text = buf.toString('utf8', 0, bytesRead).trim();
+    } finally {
+      await handle.close();
+    }
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return '';
     throw new Error(`cannot read learnings at ${file}: ${(err as Error).message}`);

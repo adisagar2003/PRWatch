@@ -49,6 +49,11 @@ describe('resolveLearnings', () => {
     expect(out.length).toBeLessThan(MAX_LEARNINGS_CHARS + 500);
   });
 
+  it('keeps a file of exactly the cap without truncating it', async () => {
+    await fs.writeFile(learningsPath(), 'é'.repeat(MAX_LEARNINGS_CHARS));
+    expect(await resolveLearnings(clone)).not.toContain('(truncated)');
+  });
+
   it('refuses a repo learnings file that symlinks outside the checkout', async () => {
     const secret = path.join(tmp, 'secret.txt');
     await fs.writeFile(secret, 'PRIVATE KEY');
