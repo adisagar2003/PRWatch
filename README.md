@@ -66,7 +66,8 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
   "agent": "claude",
   "pollIntervalMinutes": 3,
   "agentTimeoutMinutes": 10,
-  "notifications": true
+  "notifications": true,
+  "profile": "chill"
 }
 ```
 
@@ -77,6 +78,7 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
 | `pollIntervalMinutes` | `3` | How often open PRs are listed. |
 | `agentTimeoutMinutes` | `10` | Hard timeout per review; the agent process is killed past it. |
 | `notifications` | `true` | Desktop notification when a review is posted, or when one is abandoned after its retries (macOS `osascript`, Linux `notify-send`; no-op elsewhere). Set to `false` on headless machines. |
+| `profile` | `"chill"` | How much the review reports: `quiet` (Critical/Major only), `chill` (the rubric as written), `assertive` (minor issues too). Applies on top of any rubric, including repo overrides. |
 
 ## Rubric
 

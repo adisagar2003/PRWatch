@@ -3,12 +3,17 @@ import { configPath, prwatchHome } from './paths.js';
 
 export type AgentName = 'claude' | 'codex' | 'opencode';
 
+/** How much the review reports: quiet = blockers only, chill = the rubric as written, assertive = everything. */
+export type ReviewProfile = 'quiet' | 'chill' | 'assertive';
+export const REVIEW_PROFILES: ReviewProfile[] = ['quiet', 'chill', 'assertive'];
+
 export interface Config {
   repos: string[];
   agent: AgentName;
   pollIntervalMinutes: number;
   agentTimeoutMinutes: number;
   notifications: boolean;
+  profile: ReviewProfile;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -17,6 +22,7 @@ export const DEFAULT_CONFIG: Config = {
   pollIntervalMinutes: 3,
   agentTimeoutMinutes: 10,
   notifications: true,
+  profile: 'chill',
 };
 
 function validateConfig(c: unknown): Config {
@@ -48,6 +54,11 @@ function validateConfig(c: unknown): Config {
   // Validate agentTimeoutMinutes
   if (typeof merged.agentTimeoutMinutes !== 'number' || !Number.isFinite(merged.agentTimeoutMinutes) || merged.agentTimeoutMinutes <= 0) {
     throw new Error('agentTimeoutMinutes must be a finite number > 0');
+  }
+
+  // Validate profile
+  if (!REVIEW_PROFILES.includes(merged.profile)) {
+    throw new Error(`profile must be one of ${REVIEW_PROFILES.map((p) => `'${p}'`).join(', ')}`);
   }
 
   // Validate notifications
