@@ -11,6 +11,8 @@ export interface Config {
   notifications: boolean;
   /** Let the agent merge the base branch and fix conflicts, then push to the PR branch. */
   autoResolveConflicts: boolean;
+  /** Review a PR again, scoped to the new commits, when its author pushes. */
+  reReviewOnPush: boolean;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -20,6 +22,7 @@ export const DEFAULT_CONFIG: Config = {
   agentTimeoutMinutes: 10,
   notifications: true,
   autoResolveConflicts: false,
+  reReviewOnPush: true,
 };
 
 function validateConfig(c: unknown): Config {
@@ -51,6 +54,10 @@ function validateConfig(c: unknown): Config {
   // Validate agentTimeoutMinutes
   if (typeof merged.agentTimeoutMinutes !== 'number' || !Number.isFinite(merged.agentTimeoutMinutes) || merged.agentTimeoutMinutes <= 0) {
     throw new Error('agentTimeoutMinutes must be a finite number > 0');
+  }
+
+  if (typeof merged.reReviewOnPush !== 'boolean') {
+    throw new Error('reReviewOnPush must be a boolean');
   }
 
   // Validate notifications

@@ -33,7 +33,10 @@ function fakeForge(prs: PR[]): ForgeAdapter {
     listOpenPRs: async () => prs,
     isOpen: async () => true,
     isConflicting: async () => false,
-    clone: async (_r, _p, dir) => { await fs.mkdir(dir, { recursive: true }); },
+    clone: async (_r, n, dir) => {
+      await fs.mkdir(dir, { recursive: true });
+      return prs.find((p) => p.number === n)!.headSha;
+    },
     hasMarkerComment: async () => false,
     postComment: vi.fn(async () => {}),
   };
@@ -146,5 +149,47 @@ describe('tick conflict resolution', () => {
     await tick(makeDeps(fresh({ isConflicting }), okAgent, state, { autoResolveConflicts: true }));
     expect(isConflicting).toHaveBeenCalledWith('a/b', 1);
     expect(state.repos['a/b'].conflictAttempts).toEqual({ '1@sha1': 1 });
+  });
+
+  it('re-reviews a PR after the author pushes, scoped to the commits since', async () => {
+    const state: State = { lastTickAt: null, repos: {} };
+    const pr = mkPr(1, '2026-07-22T00:00:00Z');
+    const forge = fakeForge([pr]);
+    let prompt = '';
+    const agent = { ...okAgent, review: async (o: { prompt: string }) => { prompt = o.prompt; return LONG_REVIEW; } };
+    await tick(makeDeps(forge, agent, state));
+    pr.headSha = 'sha2';
+    await tick(makeDeps(forge, agent, state));
+    expect(forge.postComment).toHaveBeenCalledTimes(2);
+    expect(prompt).toContain('git diff sha1 HEAD');
+    expect(state.repos['a/b'].reviewedHeads).toEqual({ '1': 'sha2' });
+  });
+
+  it('records the head the clone actually reviewed, not the stale listing one', async () => {
+    const state: State = { lastTickAt: null, repos: {} };
+    const forge = fakeForge([mkPr(1, '2026-07-22T00:00:00Z')]);
+    forge.clone = async (_r, _p, dir) => { await fs.mkdir(dir, { recursive: true }); return 'sha2'; };
+    await tick(makeDeps(forge, okAgent, state));
+    expect(state.repos['a/b'].reviewedHeads).toEqual({ '1': 'sha2' });
+  });
+
+  it('does not re-review with reReviewOnPush off', async () => {
+    const state: State = { lastTickAt: null, repos: {} };
+    const pr = mkPr(1, '2026-07-22T00:00:00Z');
+    const forge = fakeForge([pr]);
+    await tick(makeDeps(forge, okAgent, state, { reReviewOnPush: false }));
+    pr.headSha = 'sha2';
+    await tick(makeDeps(forge, okAgent, state, { reReviewOnPush: false }));
+    expect(forge.postComment).toHaveBeenCalledTimes(1);
+  });
+
+  it('upgrading from a SHA-less ledger pins the current head instead of re-reviewing', async () => {
+    const state: State = { lastTickAt: null, repos: {} };
+    const forge = fakeForge([{ ...mkPr(1, '2026-07-22T00:00:00Z'), headSha: 'sha9' }]);
+    const deps = makeDeps(forge, okAgent, state);
+    state.repos['a/b'].reviewed = [1];
+    await tick(deps);
+    expect(forge.postComment).not.toHaveBeenCalled();
+    expect(state.repos['a/b'].reviewedHeads).toEqual({ '1': 'sha9' });
   });
 });

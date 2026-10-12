@@ -57,6 +57,7 @@ function forge(over: Partial<ForgeAdapter> = {}): ForgeAdapter {
     clone: async (_repo, _pr, dir) => {
       await runCommand('git', ['clone', origin, dir], { cwd: tmp, timeoutMs: 30_000 });
       await git(['checkout', '-B', 'prwatch-pr', 'origin/feature'], dir);
+      return (await git(['rev-parse', 'HEAD'], dir)).trim();
     },
     hasMarkerComment: async () => false,
     postComment: async () => {},
@@ -86,8 +87,20 @@ describe('runConflictJob', () => {
       await fs.writeFile(path.join(cwd, 'file.txt'), 'moved base + feature\n');
       return 'resolved file.txt';
     });
-    expect(await runConflictJob(deps(forge(), resolver), 'a/b', pr)).toBe('resolved');
+    const featureTip = (await runCommand('git', ['rev-parse', 'feature'], { cwd: origin, timeoutMs: 30_000 })).trim();
+    let reported = '';
+    let base = '';
+    const d = {
+      ...deps(forge(), resolver),
+      onPushed: (before: string, after: string) => { base = before; reported = after; },
+    };
+    expect(await runConflictJob(d, 'a/b', pr)).toBe('resolved');
     expect(await pushedContent()).toBe('moved base + feature\n');
+    // The SHA it reports is the one now on the branch, so the loop can skip re-reviewing it.
+    const tip = await runCommand('git', ['rev-parse', 'feature'], { cwd: origin, timeoutMs: 30_000 });
+    expect(reported).toBe(tip.trim());
+    // ...and the head it merged into is the one the clone had, not the listing's.
+    expect(base).toBe(featureTip);
     await expect(fs.readdir(path.join(tmp, 'cache'))).resolves.toEqual([]);
   });
 

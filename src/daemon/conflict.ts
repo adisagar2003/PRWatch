@@ -9,6 +9,7 @@ import type { AgentAdapter } from '../agents/index.js';
 import { buildConflictPrompt } from '../prompt.js';
 import {
   mergeBase, unmergedPaths, hasConflictMarkers, changedOutside, stageAll, commitMerge, pushBranch,
+  headSha,
 } from './git.js';
 
 export type ConflictResult = 'resolved' | 'skipped' | 'failed';
@@ -19,6 +20,8 @@ export interface ConflictDeps {
   cacheRoot: string;
   timeoutMs: number;
   log: (msg: string) => void;
+  /** Called once the merge commit is on the PR branch: the head it was built on, and its own SHA. */
+  onPushed?: (before: string, after: string) => void;
 }
 
 /** Merge the base branch into the PR branch, have the agent fix conflicts, push the result. */
@@ -40,7 +43,7 @@ export async function runConflictJob(
 
     log(`resolving conflicts in ${repo}#${pr.number} with ${agent.name}`);
     await fs.mkdir(cacheRoot, { recursive: true });
-    await forge.clone(repo, pr.number, dir);
+    const before = await forge.clone(repo, pr.number, dir);
 
     if ((await mergeBase(dir, pr.baseRef)) === 'clean') {
       log(`skip conflicts ${repo}#${pr.number}: base merged cleanly`);
@@ -68,7 +71,10 @@ export async function runConflictJob(
     }
 
     await commitMerge(dir);
+    // Read before pushing: once pushed, nothing may fail and leave our own commit unmarked.
+    const after = await headSha(dir);
     await pushBranch(dir, pr.headRef);
+    deps.onPushed?.(before, after);
     log(`pushed conflict resolution for ${repo}#${pr.number}`);
     return 'resolved';
   } catch (e) {

@@ -14,6 +14,34 @@ const rs = (over: Partial<RepoState> = {}): RepoState => ({
   ...over,
 });
 
+describe('prsNeedingReview: re-review on push', () => {
+  const pushed = { ...pr(1, '2026-07-22T00:00:00Z'), headSha: 'sha2' };
+
+  it('returns a reviewed PR whose head moved past the reviewed SHA', () => {
+    const state = rs({ reviewed: [1], reviewedHeads: { '1': 'sha1' } });
+    expect(prsNeedingReview([pushed], state).map((p) => p.number)).toEqual([1]);
+  });
+
+  it('skips it when re-review is turned off', () => {
+    const state = rs({ reviewed: [1], reviewedHeads: { '1': 'sha1' } });
+    expect(prsNeedingReview([pushed], state, false)).toEqual([]);
+  });
+
+  it('skips a reviewed PR still at the reviewed SHA', () => {
+    const state = rs({ reviewed: [1], reviewedHeads: { '1': 'sha2' } });
+    expect(prsNeedingReview([pushed], state)).toEqual([]);
+  });
+
+  it('skips a legacy reviewed PR with no recorded SHA', () => {
+    expect(prsNeedingReview([pushed], rs({ reviewed: [1] }))).toEqual([]);
+  });
+
+  it('skips a PR we gave up on', () => {
+    const state = rs({ reviewed: [1], failed: [1], reviewedHeads: { '1': 'sha1' } });
+    expect(prsNeedingReview([pushed], state)).toEqual([]);
+  });
+});
+
 describe('prsNeedingReview', () => {
   it('excludes PRs created before watching started', () => {
     const prs = [pr(1, '2026-07-20T00:00:00Z'), pr(2, '2026-07-22T00:00:00Z')];

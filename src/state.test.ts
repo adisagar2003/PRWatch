@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  loadState, saveState, ensureRepoState, recordReviewed, recordFailure, MAX_ATTEMPTS,
+  loadState, saveState, ensureRepoState, recordReviewed, backfillReviewedHeads, markOwnPush, recordFailure, MAX_ATTEMPTS,
   conflictAttemptsLeft, recordConflictFailure, pruneConflictAttempts, type RepoState,
 } from './state.js';
 import type { PR } from './forge/types.js';
@@ -38,6 +38,29 @@ describe('state', () => {
     expect(rs.watchStartedAt).toBe('2026-07-21T00:00:00.000Z');
     const again = ensureRepoState(s, 'a/b', new Date('2027-01-01T00:00:00Z'));
     expect(again.watchStartedAt).toBe('2026-07-21T00:00:00.000Z');
+  });
+
+  it('recordReviewed remembers the head SHA the review covered', () => {
+    const rs = ensureRepoState({ lastTickAt: null, repos: {} }, 'a/b', new Date());
+    recordReviewed(rs, 7, 'sha1');
+    expect(rs.reviewedHeads).toEqual({ '7': 'sha1' });
+  });
+
+  it('backfillReviewedHeads pins legacy reviews to the current head, without overwriting', () => {
+    const rs = ensureRepoState({ lastTickAt: null, repos: {} }, 'a/b', new Date());
+    rs.reviewed = [1, 2];
+    rs.reviewedHeads = { '2': 'old' };
+    const open = (n: number, headSha: string) => ({ number: n, headSha }) as PR;
+    backfillReviewedHeads(rs, [open(1, 'cur1'), open(2, 'cur2'), open(3, 'cur3')]);
+    expect(rs.reviewedHeads).toEqual({ '1': 'cur1', '2': 'old' });
+  });
+
+  it('markOwnPush advances the reviewed head only if the review covered the pre-push head', () => {
+    const rs = ensureRepoState({ lastTickAt: null, repos: {} }, 'a/b', new Date());
+    rs.reviewedHeads = { '1': 'before', '2': 'older' };
+    markOwnPush(rs, 1, 'before', 'merge1');
+    markOwnPush(rs, 2, 'before', 'merge2');
+    expect(rs.reviewedHeads).toEqual({ '1': 'merge1', '2': 'older' });
   });
 
   it('recordReviewed adds to ledger and clears retries', () => {

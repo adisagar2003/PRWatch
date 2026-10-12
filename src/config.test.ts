@@ -40,6 +40,15 @@ describe('config', () => {
     expect((await loadConfig()).notifications).toBe(true);
   });
 
+  it('re-reviews on push by default', async () => {
+    expect((await loadConfig()).reReviewOnPush).toBe(true);
+  });
+
+  it('rejects a non-boolean reReviewOnPush', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ reReviewOnPush: 1 }));
+    await expect(loadConfig()).rejects.toThrow(/reReviewOnPush must be a boolean/);
+  });
+
   it('rejects a non-boolean notifications value', async () => {
     await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ notifications: 'yes' }));
     await expect(loadConfig()).rejects.toThrow(/notifications must be a boolean/);
