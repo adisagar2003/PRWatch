@@ -71,6 +71,12 @@ describe('commentableLines', () => {
     expect([...m.get('src/a.ts')!].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 21, 22]);
     expect(m.has('gone.ts')).toBe(false);
   });
+
+  it('reads paths git quotes or tab-terminates, so those files still get comments', () => {
+    const d = (header: string) => `diff --git x y\n--- a/x\n${header}\n@@ -1,1 +1,1 @@\n+x\n`;
+    expect([...commentableLines(d('+++ "b/caf\\303\\251 \\"q\\".ts"')).keys()]).toEqual(['café "q".ts']);
+    expect([...commentableLines(d('+++ b/my file.ts\t')).keys()]).toEqual(['my file.ts']);
+  });
 });
 
 describe('keepInDiff', () => {
@@ -88,6 +94,11 @@ describe('formatCommentBody', () => {
   it('adds a GitHub suggestion block when there is a fix', () => {
     expect(formatCommentBody({ path: 'a', line: 1, body: 'Use const', suggestion: 'const x = 1;' }))
       .toBe('Use const\n\n```suggestion\nconst x = 1;\n```');
+  });
+
+  it('fences the suggestion longer than any backtick run inside it, so it cannot close early', () => {
+    expect(formatCommentBody({ path: 'a', line: 1, body: 'b', suggestion: '```js\nx\n```' }))
+      .toBe('b\n\n````suggestion\n```js\nx\n```\n````');
   });
 
   it('is just the body without a fix', () => {

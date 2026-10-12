@@ -45,6 +45,21 @@ export function splitReview(output: string): {
   return { summary, comments: parsed.filter(isComment).slice(0, MAX_LINE_COMMENTS), error: undefined };
 }
 
+const C_ESCAPES: Record<string, string> = { a: '\x07', b: '\b', t: '\t', n: '\n', v: '\v', f: '\f', r: '\r' };
+
+/** The new-side path from a `+++ ` header; undefined for /dev/null. Undoes git's C-style quoting. */
+function newPath(header: string): string | undefined {
+  // Git appends a tab to names containing spaces, and quotes names with special or non-ASCII bytes.
+  let p = header.slice(4).replace(/\t$/, '');
+  if (p.startsWith('"') && p.endsWith('"')) {
+    const bytes = p.slice(1, -1).split(/(\\[0-7]{3}|\\.)/).map((part) =>
+      /^\\[0-7]{3}$/.test(part) ? Buffer.from([parseInt(part.slice(1), 8)])
+        : Buffer.from(part.startsWith('\\') ? C_ESCAPES[part[1]] ?? part[1] : part));
+    p = Buffer.concat(bytes).toString('utf8');
+  }
+  return p.startsWith('b/') ? p.slice(2) : undefined;
+}
+
 /** For each file in a unified diff: new-side line numbers GitHub accepts comments on. */
 export function commentableLines(diff: string): Map<string, Set<number>> {
   const files = new Map<string, Set<number>>();
@@ -55,10 +70,10 @@ export function commentableLines(diff: string): Map<string, Set<number>> {
     if (raw.startsWith('diff --git ')) {
       lines = undefined;
     } else if (raw.startsWith('+++ ') && prev.startsWith('--- ')) {
-      const target = raw.slice(4);
       // Deleted files have no new side to comment on.
-      lines = target.startsWith('b/') ? new Set() : undefined;
-      if (lines) files.set(target.slice(2), lines);
+      const target = newPath(raw);
+      lines = undefined;
+      if (target !== undefined) files.set(target, (lines = new Set()));
     } else if (lines && raw.startsWith('@@')) {
       next = Number(/\+(\d+)/.exec(raw)?.[1] ?? 0);
     } else if (lines && next > 0 && (raw.startsWith(' ') || raw.startsWith('+'))) {
@@ -83,5 +98,9 @@ export function keepInDiff<T extends LineComment>(
 }
 
 export function formatCommentBody(c: AgentLineComment): string {
-  return c.suggestion === undefined ? c.body : `${c.body}\n\n\`\`\`suggestion\n${c.suggestion}\n\`\`\``;
+  if (c.suggestion === undefined) return c.body;
+  // A fence must be longer than any backtick run inside it, or replacement code like ``` closes it early.
+  const longest = Math.max(0, ...(c.suggestion.match(/`+/g) ?? []).map((run) => run.length));
+  const fence = '`'.repeat(Math.max(3, longest + 1));
+  return `${c.body}\n\n${fence}suggestion\n${c.suggestion}\n${fence}`;
 }
