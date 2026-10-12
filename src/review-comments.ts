@@ -66,16 +66,20 @@ export function commentableLines(diff: string): Map<string, Set<number>> {
   let lines: Set<number> | undefined;
   let next = 0;
   let prev = '';
+  // File headers only come before a file's first hunk; inside one, "--- x" / "+++ y" are content.
+  let inHeader = false;
   for (const raw of diff.split('\n')) {
     if (raw.startsWith('diff --git ')) {
       lines = undefined;
-    } else if (raw.startsWith('+++ ') && prev.startsWith('--- ')) {
+      inHeader = true;
+    } else if (inHeader && raw.startsWith('+++ ') && prev.startsWith('--- ')) {
       // Deleted files have no new side to comment on.
       const target = newPath(raw);
       lines = undefined;
       if (target !== undefined) files.set(target, (lines = new Set()));
-    } else if (lines && raw.startsWith('@@')) {
-      next = Number(/\+(\d+)/.exec(raw)?.[1] ?? 0);
+    } else if (raw.startsWith('@@')) {
+      inHeader = false;
+      if (lines) next = Number(/\+(\d+)/.exec(raw)?.[1] ?? 0);
     } else if (lines && next > 0 && (raw.startsWith(' ') || raw.startsWith('+'))) {
       lines.add(next++);
     }

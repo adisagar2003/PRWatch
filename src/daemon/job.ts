@@ -4,7 +4,7 @@ import type { ForgeAdapter, PR } from '../forge/types.js';
 import type { AgentAdapter } from '../agents/index.js';
 import { resolveRubric } from '../rubric.js';
 import { buildPrompt, lineCommentsNote } from '../prompt.js';
-import { splitReview, commentableLines, keepInDiff, formatCommentBody } from '../review-comments.js';
+import { splitReview, commentableLines, keepInDiff, formatCommentBody, type AgentLineComment } from '../review-comments.js';
 import { MARKER } from '../forge/github.js';
 
 export type JobResult = 'posted' | 'skipped-existing' | 'skipped-closed' | 'failed';
@@ -29,7 +29,7 @@ function attribution(agentName: string): string {
 /** Best effort: the summary is already up, so a failure here is logged, never retried (no duplicates). */
 async function postLineComments(
   forge: ForgeAdapter, repo: string, pr: number,
-  comments: ReturnType<typeof splitReview>['comments'], log: (msg: string) => void,
+  comments: AgentLineComment[], log: (msg: string) => void,
 ): Promise<void> {
   try {
     const { kept, dropped } = keepInDiff(comments, commentableLines(await forge.getDiff(repo, pr)));

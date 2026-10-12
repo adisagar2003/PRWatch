@@ -72,6 +72,11 @@ describe('commentableLines', () => {
     expect(m.has('gone.ts')).toBe(false);
   });
 
+  it('does not mistake a removed "-- x" then added "++ y" inside a hunk for a file header', () => {
+    const d = 'diff --git a/q.sql b/q.sql\n--- a/q.sql\n+++ b/q.sql\n@@ -1,2 +1,2 @@\n--- old\n+++ new\n ctx\n';
+    expect([...commentableLines(d).entries()]).toEqual([['q.sql', new Set([1, 2])]]);
+  });
+
   it('reads paths git quotes or tab-terminates, so those files still get comments', () => {
     const d = (header: string) => `diff --git x y\n--- a/x\n${header}\n@@ -1,1 +1,1 @@\n+x\n`;
     expect([...commentableLines(d('+++ "b/caf\\303\\251 \\"q\\".ts"')).keys()]).toEqual(['café "q".ts']);
