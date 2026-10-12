@@ -9,6 +9,7 @@ export function prwatchHome(): string {
 export const configPath = (): string => path.join(prwatchHome(), 'config.json');
 export const statePath = (): string => path.join(prwatchHome(), 'state.json');
 export const rubricPath = (): string => path.join(prwatchHome(), 'rubric.md');
+export const learningsPath = (): string => path.join(prwatchHome(), 'learnings.md');
 export const cacheDir = (): string => path.join(prwatchHome(), 'cache');
 export const logsDir = (): string => path.join(prwatchHome(), 'logs');
 

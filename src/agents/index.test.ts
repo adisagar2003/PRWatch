@@ -37,6 +37,14 @@ describe('agent adapters', () => {
     expect(out.trim()).toBe('THE PROMPT');
   });
 
+  it('review tells buildArgs whether the agent may write, defaulting to no', async () => {
+    const bin = await writeScript('echo-args', 'echo "$1"');
+    const agent = makeAgent('claude', bin, (p, w) => [w ? 'WRITE' : 'READONLY', p]);
+    expect((await agent.review({ cwd: tmp, prompt: 'x', timeoutMs: 5000 })).trim()).toBe('READONLY');
+    const out = await agent.review({ cwd: tmp, prompt: 'x', timeoutMs: 5000, write: true });
+    expect(out.trim()).toBe('WRITE');
+  });
+
   it('review rejects on non-zero exit', async () => {
     const bin = await writeScript('crasher', 'echo boom >&2; exit 1');
     const agent = makeAgent('codex', bin, (p) => [p]);

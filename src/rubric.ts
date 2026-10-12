@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { rubricPath, prwatchHome } from './paths.js';
+import { defaultBranchFile } from './daemon/git.js';
 
 export const DEFAULT_RUBRIC = `# Code Review (Radical Candor)
 
@@ -111,13 +112,12 @@ in the Summary and still include **🎯 Merge Confidence**, **🧭 Review Order*
 `;
 
 export async function resolveRubric(cloneDir: string): Promise<string> {
-  const repoOverride = path.join(cloneDir, '.prwatch', 'rubric.md');
+  // From the default branch, not the PR checkout: a PR must not grade itself.
   try {
-    return await fs.readFile(repoOverride, 'utf8');
+    const repoRubric = await defaultBranchFile(cloneDir, '.prwatch/rubric.md');
+    if (repoRubric !== null) return repoRubric;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw new Error(`cannot read rubric at ${repoOverride}: ${(err as Error).message}`);
-    }
+    throw new Error(`cannot read rubric at .prwatch/rubric.md: ${(err as Error).message}`);
   }
 
   const homeRubric = rubricPath();

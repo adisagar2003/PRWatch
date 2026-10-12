@@ -30,12 +30,12 @@ prwatch is a small daemon + TUI (terminal user interface — a keyboard-driven a
 |---|---|
 | 💸 **Zero CI cost** | Nothing runs in GitHub Actions. The review happens on your machine with the agent subscription you already have. |
 | 🤖 **Your agent, your rules** | `claude`, `codex`, or `opencode`, auto-detected from your `PATH`. The rubric is a markdown file you own. |
-| 🧹 **No backlog, no spam** | Only PRs opened after you start watching. Each PR reviewed exactly once. Temp clones always deleted. |
+| 🧹 **No backlog, no spam** | Only PRs opened after you start watching. One review per commit pushed — never twice for the same code. Temp clones always deleted. |
 
 ## Prerequisites
 
 - Node.js ≥ 20
-- `gh` (GitHub CLI), logged in: `gh auth login`
+- `gh` (GitHub CLI), logged in as a user: `gh auth login` (GitHub App / installation tokens aren't supported — prwatch only trusts its markers in comments written by the logged-in user)
 - At least one agent CLI: `claude`, `codex`, or `opencode`
 
 ## Install
@@ -54,7 +54,7 @@ prw service install   # optional: run at login via launchd/systemd
 
 <img width="1502" alt="prwatch TUI" src="https://github.com/user-attachments/assets/4c1b8abc-f259-4fc9-955a-3e49e5c229df" />
 
-Only PRs opened **after** you start watching a repo are reviewed — no backlog spam. Each PR gets reviewed once (the marker comment `<!-- prwatch -->` guarantees idempotency — running twice can't produce a second review).
+Only PRs opened **after** you start watching a repo are reviewed — no backlog spam. Each PR is reviewed when it opens, then **re-reviewed after each push**, covering only the new commits (turn off with `"reReviewOnPush": false`). Every comment carries hidden `<!-- prwatch -->` and `<!-- prwatch head=SHA -->` markers, so running twice can't post a second review of the same commit. prwatch's own conflict-resolution merges never trigger a re-review.
 
 ## Configuration
 
@@ -67,6 +67,8 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
   "pollIntervalMinutes": 3,
   "agentTimeoutMinutes": 10,
   "notifications": true,
+  "autoResolveConflicts": false,
+  "reReviewOnPush": true,
   "profile": "chill"
 }
 ```
@@ -77,13 +79,30 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
 | `agent` | `"claude"` | One of `claude`, `codex`, `opencode`. |
 | `pollIntervalMinutes` | `3` | How often open PRs are listed. |
 | `agentTimeoutMinutes` | `10` | Hard timeout per review; the agent process is killed past it. |
+| `autoResolveConflicts` | `false` | Off by default — it pushes commits. See [Auto-resolving merge conflicts](#auto-resolving-merge-conflicts). |
+| `reReviewOnPush` | `true` | After the first review, review again whenever the author pushes, scoped to the commits since the last review. Pushes between polls are batched into one re-review. |
 | `notifications` | `true` | Desktop notification when a review is posted, or when one is abandoned after its retries (macOS `osascript`, Linux `notify-send`; no-op elsewhere). Set to `false` on headless machines. |
+| `lineComments` | `false` | Also post issues as comments on the changed lines, with one-click **suggested fixes**. The summary comment is unchanged. Comments on lines outside the diff are dropped. |
 | `profile` | `"chill"` | How much the review reports: `quiet` (Critical/Major only), `chill` (the rubric as written), `assertive` (minor issues too). Applies on top of any rubric, including repo overrides. |
+| `chat` | `false` | Answer `@prwatch …` questions in PR comments. See [Chat](#chat). |
+
+## Auto-resolving merge conflicts
+
+Off by default. Turn it on with `5` in the TUI, or `"autoResolveConflicts": true`.
+
+Each tick, for every watched PR GitHub reports as conflicting, prwatch clones it, merges the base
+branch, hands the conflicted files to your agent, and — only if no conflict markers survive and git
+reports nothing unresolved — commits the merge and pushes it to the PR branch.
+
+It gives up (and notifies) after 3 failed attempts on a given head commit — a new push from the PR
+author earns a fresh 3 — and skips PRs from forks, which you cannot push to. Conflicts git can't mark up — binary files, or one side deleting a file the other edited — are never auto-resolved; prwatch gives up and notifies you. **This writes to other
+people's branches**: the merge commit is authored by `PRWatch`, and a bad automated resolution is a
+real way to lose someone's changes. Leave it off for repos with outside contributors.
 
 ## Rubric
 
 The default rubric lives at `~/.prwatch/rubric.md` — edit it freely.
-A repo can override it by committing `.prwatch/rubric.md` at its root.
+A repo can override it by committing `.prwatch/rubric.md` at its root. The override is read from the repo's **default branch**, never from the PR being reviewed, so a PR can't rewrite the rules its own review follows.
 
 Every review opens with a **🎯 Merge Confidence** rating (High 🟢 / Medium 🟡 / Low 🔴,
 set by the issues found) and a **🧭 Review Order** Mermaid diagram showing which
@@ -95,6 +114,32 @@ If you edited yours (or use a repo override), copy the *Merge confidence* and
 *Review order diagram* sections from `DEFAULT_RUBRIC` in
 [`src/rubric.ts`](./src/rubric.ts) to get them.
 
+## Learnings
+
+Stop prwatch re-flagging things your team already decided. Write them as markdown bullets in:
+
+- `.prwatch/learnings.md` committed on the repo's default branch (shared with the team), and/or
+- `~/.prwatch/learnings.md` (yours, applies to every repo).
+
+```md
+- Default exports are fine in `src/pages/`.
+- We intentionally swallow errors in `telemetry.ts`.
+```
+
+Both are added to every review prompt (repo first, each capped at 4,000 characters). Like the rubric override, the repo file comes from the default branch: a PR that adds or edits it doesn't change its own review.
+
+## Chat
+
+Off by default. Turn it on with `"chat": true`.
+
+Tag `@prwatch` in a comment on any open PR in a watched repo and prwatch replies with your agent's answer at the next poll:
+
+> @prwatch why does `retry()` not need a timeout here?
+
+- Only repo **owners, members and collaborators** get answers, so strangers on a public repo can't run your agent. Note "members" means anyone in the repo's org, and collaborators include read-only ones.
+- Only comments written after chat was switched on are answered. Each comment is answered once; a failed answer isn't retried, so tag again.
+- The agent runs against a fresh clone of the PR with the same CLI flags as a review. It is told not to change anything, but prwatch doesn't sandbox it: your agent's own permission settings are the real limit (see [Security](#security)).
+
 ## Security
 
 Watching a public repo means running your agent against untrusted input: the PR title/body, and the PR's own files (which can include agent-instruction files like `CLAUDE.md` that an attacker committed to influence your agent). Recommendations:
@@ -103,6 +148,8 @@ Watching a public repo means running your agent against untrusted input: the PR 
 - Run the agent with restrictive permission settings (e.g. no auto-approve of shell/network tools) when watching third-party repos.
 
 prwatch fences the PR title/description inside `<untrusted-pr-content>` tags in the prompt sent to your agent, but this cannot prevent an agent from reading attacker-added files in the checkout itself — that mitigation must come from your agent's own permission model.
+
+prwatch's own settings files (`.prwatch/rubric.md`, `.prwatch/learnings.md`) are read from the default branch, not the PR checkout, so a PR can't edit them to change its review or symlink them to a local secret.
 
 ## State
 

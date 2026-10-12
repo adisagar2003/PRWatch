@@ -2,14 +2,17 @@ import { ensureDirs, cacheDir } from '../paths.js';
 import { loadConfig, type Config } from '../config.js';
 import {
   loadState, saveState as persistState, ensureRepoState,
-  recordReviewed, recordFailure, type State,
+  recordReviewed, recordFailure, recordConflictFailure, pruneConflictAttempts,
+  backfillReviewedHeads, markOwnPush, type State,
 } from '../state.js';
 import { ensureHomeRubric } from '../rubric.js';
 import { GitHubForge, checkGhAuth } from '../forge/github.js';
 import { getAgent, type AgentAdapter } from '../agents/index.js';
-import type { ForgeAdapter } from '../forge/types.js';
-import { prsNeedingReview } from './filter.js';
+import type { ForgeAdapter, PR } from '../forge/types.js';
+import { prsNeedingReview, prsNeedingConflictCheck } from './filter.js';
 import { runReviewJob } from './job.js';
+import { runConflictJob } from './conflict.js';
+import { selectChatRequests, runChatJob } from './chat.js';
 import { createLogger } from './log.js';
 import { killActiveProcessGroups } from '../run-command.js';
 import { notify } from '../notify.js';
@@ -30,6 +33,8 @@ export async function tick(deps: TickDeps): Promise<void> {
   const { forge, agent, config, state, saveState, cacheRoot, log, now, notify: send } = deps;
   const announce = (msg: string) => { if (config.notifications) send('PRWatch', msg); };
   const timeoutMs = config.agentTimeoutMinutes * 60_000;
+  // Taken before any review runs: chat baselines here, so mentions made mid-review still count.
+  const tickStart = now();
 
   for (const repo of config.repos) {
     const rs = ensureRepoState(state, repo, now());
@@ -40,9 +45,18 @@ export async function tick(deps: TickDeps): Promise<void> {
       log(`could not list PRs for ${repo}: ${(e as Error).message}`);
       continue;
     }
-    for (const pr of prsNeedingReview(prs, rs)) {
+    backfillReviewedHeads(rs, prs);
+    for (const pr of prsNeedingReview(prs, rs, config.reReviewOnPush)) {
+      const sinceSha = rs.reviewed.includes(pr.number)
+        ? rs.reviewedHeads?.[String(pr.number)]
+        : undefined;
+      // ponytail: a re-review failing MAX_ATTEMPTS times marks the PR failed for good, same
+      // as a first review. Per-head failure counters (like conflictAttempts) if that bites.
+      let reviewedHead = pr.headSha;
+      const onReviewedHead = (sha: string) => { reviewedHead = sha; };
       const result = await runReviewJob(
-        { forge, agent, cacheRoot, timeoutMs, log, profile: config.profile }, repo, pr,
+        { forge, agent, cacheRoot, timeoutMs, log, onReviewedHead, profile: config.profile,
+          lineComments: config.lineComments }, repo, pr, sinceSha,
       );
       if (result === 'failed') {
         recordFailure(rs, pr.number);
@@ -51,14 +65,66 @@ export async function tick(deps: TickDeps): Promise<void> {
           announce(`review failed for ${repo}#${pr.number} · ${pr.title}`);
         }
       } else {
-        recordReviewed(rs, pr.number);
+        recordReviewed(rs, pr.number, reviewedHead);
         if (result === 'posted') announce(`posted review for ${repo}#${pr.number} · ${pr.title}`);
+      }
+      await saveState(state);
+    }
+
+    if (config.chat) await answerMentions(deps, repo, prs, timeoutMs, tickStart);
+
+    if (!config.autoResolveConflicts) continue;
+    pruneConflictAttempts(rs, prs);
+    for (const pr of prsNeedingConflictCheck(prs, rs)) {
+      const onPushed = (before: string, after: string) => markOwnPush(rs, pr.number, before, after);
+      const result = await runConflictJob(
+        { forge, agent, cacheRoot, timeoutMs, log, onPushed }, repo, pr,
+      );
+      if (result === 'failed') {
+        recordConflictFailure(rs, pr.number, pr.headSha);
+        announce(`could not resolve conflicts in ${repo}#${pr.number} · ${pr.title}`);
+      } else if (result === 'resolved') {
+        announce(`resolved conflicts in ${repo}#${pr.number} · ${pr.title}`);
       }
       await saveState(state);
     }
   }
 
   state.lastTickAt = now().toISOString();
+  await saveState(state);
+}
+
+const CHAT_OVERLAP_MS = 60_000;
+
+async function answerMentions(
+  deps: TickDeps, repo: string, prs: PR[], timeoutMs: number, tickStart: Date,
+) {
+  const { forge, agent, state, saveState, cacheRoot, log } = deps;
+  const rs = state.repos[repo];
+  if (rs.chatSince === undefined) {
+    // No backlog: only mentions after chat was switched on get answers.
+    rs.chatSince = tickStart.toISOString();
+    await saveState(state);
+    return;
+  }
+  let comments;
+  try {
+    const since = new Date(Date.parse(rs.chatSince) - CHAT_OVERLAP_MS).toISOString();
+    comments = await forge.listCommentsSince(repo, since);
+  } catch (e) {
+    log(`could not list comments for ${repo}: ${(e as Error).message}`);
+    return;
+  }
+  const cursor = rs.chatCursor ?? 0;
+  const byNumber = new Map(prs.map((p) => [p.number, p]));
+  for (const c of selectChatRequests(comments, prs, cursor)) {
+    // Failures aren't retried: the asker can tag again.
+    await runChatJob({ forge, agent, cacheRoot, timeoutMs, log }, repo, byNumber.get(c.pr)!, c);
+    rs.chatCursor = c.id;
+    await saveState(state);
+  }
+  rs.chatCursor = Math.max(cursor, rs.chatCursor ?? 0, ...comments.map((c) => c.id));
+  rs.chatSince = tickStart.toISOString();
   await saveState(state);
 }
 

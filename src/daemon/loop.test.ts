@@ -23,21 +23,32 @@ afterEach(async () => {
 const LONG_REVIEW = 'Verdict: APPROVE. '.repeat(10);
 
 const mkPr = (n: number, createdAt: string): PR => ({
-  number: n, title: `PR ${n}`, body: '', createdAt, headRef: 'b', author: 'adi',
+  number: n, title: `PR ${n}`, body: '', createdAt,
+  headRef: 'b', headSha: 'sha1', baseRef: 'main', fromFork: false, author: 'adi',
 });
 
 function fakeForge(prs: PR[]): ForgeAdapter {
   return {
     name: 'fake',
     listOpenPRs: async () => prs,
+    getDiff: async () => '',
+    postLineComments: vi.fn(async () => {}),
+    listCommentsSince: async () => [],
     isOpen: async () => true,
-    clone: async (_r, _p, dir) => { await fs.mkdir(dir, { recursive: true }); },
+    isConflicting: async () => false,
+    clone: async (_r, n, dir) => {
+      await fs.mkdir(dir, { recursive: true });
+      return prs.find((p) => p.number === n)!.headSha;
+    },
     hasMarkerComment: async () => false,
     postComment: vi.fn(async () => {}),
   };
 }
 
-const okAgent: AgentAdapter = { name: 'claude', isInstalled: async () => true, review: async () => LONG_REVIEW };
+const okAgent: AgentAdapter = {
+  name: 'claude', hasAuthCheck: false, isInstalled: async () => true,
+  checkAuth: async () => 'unknown', review: async () => LONG_REVIEW,
+};
 
 function makeDeps(
   forge: ForgeAdapter, agent: AgentAdapter, state: State, over: Partial<Config> = {},
@@ -118,5 +129,115 @@ describe('tick', () => {
     const deps = makeDeps(forge, okAgent, state, { notifications: false });
     await tick(deps);
     expect(deps.notify).not.toHaveBeenCalled();
+  });
+
+  describe('chat', () => {
+    const mention = (id: number) => ({
+      id, pr: 1, body: '@prwatch explain', author: 'tm', association: 'OWNER',
+    });
+    const clock = (iso: string) => () => new Date(iso);
+
+    it('never reads comments while chat is off', async () => {
+      const forge = fakeForge([]);
+      const list = vi.fn(async () => []);
+      forge.listCommentsSince = list;
+      await tick(makeDeps(forge, okAgent, { lastTickAt: null, repos: {} }));
+      expect(list).not.toHaveBeenCalled();
+    });
+
+    it('first tick only sets a baseline, later ticks answer new mentions once', async () => {
+      const state: State = { lastTickAt: null, repos: {} };
+      const pr = mkPr(1, '2026-07-20T00:00:00Z'); // predates the watch: chat still works
+      const forge = fakeForge([pr]);
+      const since: string[] = [];
+      forge.listCommentsSince = async (_r, s) => { since.push(s); return [mention(5)]; };
+
+      const d1 = { ...makeDeps(forge, okAgent, state, { chat: true }), now: clock('2026-07-23T00:00:00Z') };
+      await tick(d1);
+      expect(since).toEqual([]);
+      expect(state.repos['a/b'].chatSince).toBe('2026-07-23T00:00:00.000Z');
+
+      const d2 = { ...makeDeps(forge, okAgent, state, { chat: true }), now: clock('2026-07-23T00:03:00Z') };
+      await tick(d2);
+      await tick(d2); // same comment returned again: cursor stops a second reply
+      // One minute of overlap so a comment landing mid-tick isn't missed.
+      expect(since[0]).toBe('2026-07-22T23:59:00.000Z');
+      expect(forge.postComment).toHaveBeenCalledTimes(1);
+      expect(state.repos['a/b'].chatCursor).toBe(5);
+    });
+
+    it('baselines at tick start, so mentions made during a long review are not swallowed', async () => {
+      const state: State = { lastTickAt: null, repos: {} };
+      let t = Date.parse('2026-07-23T00:00:00Z');
+      const slowAgent: AgentAdapter = { ...okAgent, review: async () => { t += 10 * 60_000; return LONG_REVIEW; } };
+      const deps = { ...makeDeps(fakeForge([mkPr(2, '2026-07-22T00:00:00Z')]), slowAgent, state, { chat: true }), now: () => new Date(t) };
+      await tick(deps);
+      expect(state.repos['a/b'].chatSince).toBe('2026-07-23T00:00:00.000Z');
+    });
+  });
+});
+
+describe('tick conflict resolution', () => {
+  const fresh = (over: Partial<ForgeAdapter>) => {
+    const forge = { ...fakeForge([mkPr(1, '2026-07-22T00:00:00Z')]), ...over };
+    return forge as ForgeAdapter;
+  };
+
+  it('never asks about conflicts while autoResolveConflicts is off', async () => {
+    const isConflicting = vi.fn(async () => true);
+    const state: State = { lastTickAt: null, repos: {} };
+    await tick(makeDeps(fresh({ isConflicting }), okAgent, state));
+    expect(isConflicting).not.toHaveBeenCalled();
+  });
+
+  it('checks conflicts and records a failed attempt when enabled', async () => {
+    const isConflicting = vi.fn(async () => true);
+    const state: State = { lastTickAt: null, repos: {} };
+    // clone() makes an empty dir, so the merge blows up — the point is the wiring.
+    await tick(makeDeps(fresh({ isConflicting }), okAgent, state, { autoResolveConflicts: true }));
+    expect(isConflicting).toHaveBeenCalledWith('a/b', 1);
+    expect(state.repos['a/b'].conflictAttempts).toEqual({ '1@sha1': 1 });
+  });
+
+  it('re-reviews a PR after the author pushes, scoped to the commits since', async () => {
+    const state: State = { lastTickAt: null, repos: {} };
+    const pr = mkPr(1, '2026-07-22T00:00:00Z');
+    const forge = fakeForge([pr]);
+    let prompt = '';
+    const agent = { ...okAgent, review: async (o: { prompt: string }) => { prompt = o.prompt; return LONG_REVIEW; } };
+    await tick(makeDeps(forge, agent, state));
+    pr.headSha = 'sha2';
+    await tick(makeDeps(forge, agent, state));
+    expect(forge.postComment).toHaveBeenCalledTimes(2);
+    expect(prompt).toContain('git diff sha1 HEAD');
+    expect(state.repos['a/b'].reviewedHeads).toEqual({ '1': 'sha2' });
+  });
+
+  it('records the head the clone actually reviewed, not the stale listing one', async () => {
+    const state: State = { lastTickAt: null, repos: {} };
+    const forge = fakeForge([mkPr(1, '2026-07-22T00:00:00Z')]);
+    forge.clone = async (_r, _p, dir) => { await fs.mkdir(dir, { recursive: true }); return 'sha2'; };
+    await tick(makeDeps(forge, okAgent, state));
+    expect(state.repos['a/b'].reviewedHeads).toEqual({ '1': 'sha2' });
+  });
+
+  it('does not re-review with reReviewOnPush off', async () => {
+    const state: State = { lastTickAt: null, repos: {} };
+    const pr = mkPr(1, '2026-07-22T00:00:00Z');
+    const forge = fakeForge([pr]);
+    await tick(makeDeps(forge, okAgent, state, { reReviewOnPush: false }));
+    pr.headSha = 'sha2';
+    await tick(makeDeps(forge, okAgent, state, { reReviewOnPush: false }));
+    expect(forge.postComment).toHaveBeenCalledTimes(1);
+  });
+
+  it('upgrading from a SHA-less ledger pins the current head instead of re-reviewing', async () => {
+    const state: State = { lastTickAt: null, repos: {} };
+    const forge = fakeForge([{ ...mkPr(1, '2026-07-22T00:00:00Z'), headSha: 'sha9' }]);
+    const deps = makeDeps(forge, okAgent, state);
+    state.repos['a/b'].reviewed = [1];
+    await tick(deps);
+    expect(forge.postComment).not.toHaveBeenCalled();
+    expect(state.repos['a/b'].reviewedHeads).toEqual({ '1': 'sha9' });
   });
 });

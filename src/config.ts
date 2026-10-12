@@ -13,7 +13,15 @@ export interface Config {
   pollIntervalMinutes: number;
   agentTimeoutMinutes: number;
   notifications: boolean;
+  /** Let the agent merge the base branch and fix conflicts, then push to the PR branch. */
+  autoResolveConflicts: boolean;
+  /** Review a PR again, scoped to the new commits, when its author pushes. */
+  reReviewOnPush: boolean;
   profile: ReviewProfile;
+  /** Also post issues as comments on the changed lines, with one-click suggested fixes. */
+  lineComments: boolean;
+  /** Answer "@prwatch …" questions from repo collaborators in PR comments. */
+  chat: boolean;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -22,7 +30,11 @@ export const DEFAULT_CONFIG: Config = {
   pollIntervalMinutes: 3,
   agentTimeoutMinutes: 10,
   notifications: true,
+  autoResolveConflicts: false,
+  reReviewOnPush: true,
   profile: 'chill',
+  lineComments: false,
+  chat: false,
 };
 
 function validateConfig(c: unknown): Config {
@@ -56,14 +68,32 @@ function validateConfig(c: unknown): Config {
     throw new Error('agentTimeoutMinutes must be a finite number > 0');
   }
 
+  if (typeof merged.reReviewOnPush !== 'boolean') {
+    throw new Error('reReviewOnPush must be a boolean');
+  }
+
   // Validate profile
   if (!REVIEW_PROFILES.includes(merged.profile)) {
     throw new Error(`profile must be one of ${REVIEW_PROFILES.map((p) => `'${p}'`).join(', ')}`);
   }
 
+  if (typeof merged.lineComments !== 'boolean') {
+    throw new Error('lineComments must be a boolean');
+  }
+
+  // Validate chat
+  if (typeof merged.chat !== 'boolean') {
+    throw new Error('chat must be a boolean');
+  }
+
   // Validate notifications
   if (typeof merged.notifications !== 'boolean') {
     throw new Error('notifications must be a boolean');
+  }
+
+  // Validate autoResolveConflicts
+  if (typeof merged.autoResolveConflicts !== 'boolean') {
+    throw new Error('autoResolveConflicts must be a boolean');
   }
 
   return merged;

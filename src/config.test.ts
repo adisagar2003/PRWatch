@@ -40,6 +40,15 @@ describe('config', () => {
     expect((await loadConfig()).notifications).toBe(true);
   });
 
+  it('re-reviews on push by default', async () => {
+    expect((await loadConfig()).reReviewOnPush).toBe(true);
+  });
+
+  it('rejects a non-boolean reReviewOnPush', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ reReviewOnPush: 1 }));
+    await expect(loadConfig()).rejects.toThrow(/reReviewOnPush must be a boolean/);
+  });
+
   it('defaults the review profile to chill', async () => {
     expect((await loadConfig()).profile).toBe('chill');
   });
@@ -47,6 +56,24 @@ describe('config', () => {
   it('rejects an unknown review profile', async () => {
     await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ profile: 'loud' }));
     await expect(loadConfig()).rejects.toThrow(/profile must be one of/);
+  });
+
+  it('keeps line comments off by default', async () => {
+    expect((await loadConfig()).lineComments).toBe(false);
+  });
+
+  it('rejects a non-boolean lineComments value', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ lineComments: 'yes' }));
+    await expect(loadConfig()).rejects.toThrow(/lineComments must be a boolean/);
+  });
+
+  it('keeps chat off by default (it lets others trigger your agent)', async () => {
+    expect((await loadConfig()).chat).toBe(false);
+  });
+
+  it('rejects a non-boolean chat value', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ chat: 'on' }));
+    await expect(loadConfig()).rejects.toThrow(/chat must be a boolean/);
   });
 
   it('rejects a non-boolean notifications value', async () => {
@@ -82,6 +109,13 @@ describe('config', () => {
   it('rejects non-positive agentTimeoutMinutes', async () => {
     await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ agentTimeoutMinutes: -1 }));
     await expect(loadConfig()).rejects.toThrow(/invalid config at.*agentTimeoutMinutes/);
+  });
+
+  it('defaults autoResolveConflicts to off and rejects a non-boolean', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ repos: [] }));
+    expect((await loadConfig()).autoResolveConflicts).toBe(false);
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ autoResolveConflicts: 'yes' }));
+    await expect(loadConfig()).rejects.toThrow(/invalid config at.*autoResolveConflicts/);
   });
 
   it('writes atomically: no leftover .tmp file, content round-trips', async () => {
