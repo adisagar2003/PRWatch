@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { runCommand } from '../run-command.js';
-import type { ForgeAdapter, PR } from './types.js';
+import type { ForgeAdapter, LineComment, PR } from './types.js';
 
 export const MARKER = '<!-- prwatch -->';
 /** Second, per-head marker: lets a re-review check it hasn't already posted for this exact commit. */
@@ -129,6 +129,42 @@ export class GitHubForge implements ForgeAdapter {
     await fs.writeFile(file, body);
     try {
       await this.exec('gh', ['pr', 'comment', String(pr), '--repo', repo, '--body-file', file]);
+    } finally {
+      await fs.rm(file, { force: true });
+    }
+  }
+
+  async getDiff(repo: string, baseRef: string, headSha: string): Promise<string> {
+    // Not `gh pr diff`: that follows the live head, which may have moved since the clone.
+    const { stdout } = await this.exec('gh', [
+      'api', '-H', 'Accept: application/vnd.github.diff', `repos/${repo}/compare/${baseRef}...${headSha}`,
+    ]);
+    return stdout;
+  }
+
+  async postLineComments(
+    repo: string, pr: number, comments: LineComment[], headSha: string,
+  ): Promise<void> {
+    const payload = {
+      event: 'COMMENT',
+      // Line numbers refer to this commit, the one the agent reviewed.
+      commit_id: headSha,
+      comments: comments.map((c) => ({
+        path: c.path,
+        line: c.line,
+        side: 'RIGHT',
+        ...(c.startLine !== undefined && c.startLine < c.line
+          ? { start_line: c.startLine, start_side: 'RIGHT' }
+          : {}),
+        body: c.body,
+      })),
+    };
+    const file = path.join(os.tmpdir(), `prwatch-review-${pr}-${process.pid}.json`);
+    await fs.writeFile(file, JSON.stringify(payload));
+    try {
+      await this.exec('gh', [
+        'api', '-X', 'POST', `repos/${repo}/pulls/${pr}/reviews`, '--input', file,
+      ]);
     } finally {
       await fs.rm(file, { force: true });
     }

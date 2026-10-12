@@ -105,4 +105,33 @@ describe('GitHubForge', () => {
     expect(call.slice(0, 5)).toEqual(['gh', 'pr', 'comment', '7', '--repo']);
     expect(call).toContain('--body-file');
   });
+
+  it('getDiff diffs the base branch against one exact head commit, not the moving PR head', async () => {
+    const { exec, calls } = fakeExec({ 'gh api': 'DIFF' });
+    expect(await new GitHubForge(exec).getDiff('a/b', 'main', 'abc123')).toBe('DIFF');
+    expect(calls[0]).toEqual([
+      'gh', 'api', '-H', 'Accept: application/vnd.github.diff', 'repos/a/b/compare/main...abc123',
+    ]);
+  });
+
+  it('postLineComments sends one COMMENT review with right-side line comments', async () => {
+    let sent: unknown;
+    const exec: Exec = async (cmd, args) => {
+      const i = args.indexOf('--input');
+      if (i >= 0) sent = JSON.parse(await (await import('node:fs/promises')).readFile(args[i + 1], 'utf8'));
+      return { stdout: '{}' };
+    };
+    await new GitHubForge(exec).postLineComments('a/b', 7, [
+      { path: 'a.ts', line: 3, body: 'one' },
+      { path: 'a.ts', line: 6, startLine: 5, body: 'two' },
+    ], 'abc123');
+    expect(sent).toEqual({
+      event: 'COMMENT',
+      commit_id: 'abc123',
+      comments: [
+        { path: 'a.ts', line: 3, side: 'RIGHT', body: 'one' },
+        { path: 'a.ts', line: 6, side: 'RIGHT', start_line: 5, start_side: 'RIGHT', body: 'two' },
+      ],
+    });
+  });
 });

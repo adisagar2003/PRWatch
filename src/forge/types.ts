@@ -13,6 +13,14 @@ export interface PR {
   author: string;
 }
 
+/** A comment pinned to new-side lines startLine..line (or just line) of a file in the PR diff. */
+export interface LineComment {
+  path: string;
+  line: number;
+  startLine?: number;
+  body: string;
+}
+
 export interface ForgeAdapter {
   name: string;
   listOpenPRs(repo: string): Promise<PR[]>;
@@ -25,4 +33,8 @@ export interface ForgeAdapter {
   /** Whether any comment contains marker (default: any prwatch review). */
   hasMarkerComment(repo: string, pr: number, marker?: string): Promise<boolean>;
   postComment(repo: string, pr: number, body: string): Promise<void>;
+  /** The unified diff of headSha against baseRef's merge base: the PR diff, frozen at that commit. */
+  getDiff(repo: string, baseRef: string, headSha: string): Promise<string>;
+  /** Post line comments as one review on headSha. The forge rejects all of them if any line is outside that diff. */
+  postLineComments(repo: string, pr: number, comments: LineComment[], headSha: string): Promise<void>;
 }

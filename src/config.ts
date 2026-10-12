@@ -18,6 +18,8 @@ export interface Config {
   /** Review a PR again, scoped to the new commits, when its author pushes. */
   reReviewOnPush: boolean;
   profile: ReviewProfile;
+  /** Also post issues as comments on the changed lines, with one-click suggested fixes. */
+  lineComments: boolean;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -29,6 +31,7 @@ export const DEFAULT_CONFIG: Config = {
   autoResolveConflicts: false,
   reReviewOnPush: true,
   profile: 'chill',
+  lineComments: false,
 };
 
 function validateConfig(c: unknown): Config {
@@ -69,6 +72,10 @@ function validateConfig(c: unknown): Config {
   // Validate profile
   if (!REVIEW_PROFILES.includes(merged.profile)) {
     throw new Error(`profile must be one of ${REVIEW_PROFILES.map((p) => `'${p}'`).join(', ')}`);
+  }
+
+  if (typeof merged.lineComments !== 'boolean') {
+    throw new Error('lineComments must be a boolean');
   }
 
   // Validate notifications

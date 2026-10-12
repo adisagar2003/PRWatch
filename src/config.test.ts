@@ -58,6 +58,15 @@ describe('config', () => {
     await expect(loadConfig()).rejects.toThrow(/profile must be one of/);
   });
 
+  it('keeps line comments off by default', async () => {
+    expect((await loadConfig()).lineComments).toBe(false);
+  });
+
+  it('rejects a non-boolean lineComments value', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ lineComments: 'yes' }));
+    await expect(loadConfig()).rejects.toThrow(/lineComments must be a boolean/);
+  });
+
   it('rejects a non-boolean notifications value', async () => {
     await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ notifications: 'yes' }));
     await expect(loadConfig()).rejects.toThrow(/notifications must be a boolean/);

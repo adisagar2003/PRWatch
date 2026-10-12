@@ -82,6 +82,7 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
 | `autoResolveConflicts` | `false` | Off by default — it pushes commits. See [Auto-resolving merge conflicts](#auto-resolving-merge-conflicts). |
 | `reReviewOnPush` | `true` | After the first review, review again whenever the author pushes, scoped to the commits since the last review. Pushes between polls are batched into one re-review. |
 | `notifications` | `true` | Desktop notification when a review is posted, or when one is abandoned after its retries (macOS `osascript`, Linux `notify-send`; no-op elsewhere). Set to `false` on headless machines. |
+| `lineComments` | `false` | Also post issues as comments on the changed lines, with one-click **suggested fixes**. The summary comment is unchanged. Comments on lines outside the diff are dropped. |
 | `profile` | `"chill"` | How much the review reports: `quiet` (Critical/Major only), `chill` (the rubric as written), `assertive` (minor issues too). Applies on top of any rubric, including repo overrides. |
 
 ## Auto-resolving merge conflicts

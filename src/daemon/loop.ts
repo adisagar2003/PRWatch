@@ -52,7 +52,8 @@ export async function tick(deps: TickDeps): Promise<void> {
       let reviewedHead = pr.headSha;
       const onReviewedHead = (sha: string) => { reviewedHead = sha; };
       const result = await runReviewJob(
-        { forge, agent, cacheRoot, timeoutMs, log, onReviewedHead, profile: config.profile }, repo, pr, sinceSha,
+        { forge, agent, cacheRoot, timeoutMs, log, onReviewedHead, profile: config.profile,
+          lineComments: config.lineComments }, repo, pr, sinceSha,
       );
       if (result === 'failed') {
         recordFailure(rs, pr.number);

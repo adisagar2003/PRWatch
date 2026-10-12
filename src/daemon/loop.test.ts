@@ -31,6 +31,8 @@ function fakeForge(prs: PR[]): ForgeAdapter {
   return {
     name: 'fake',
     listOpenPRs: async () => prs,
+    getDiff: async () => '',
+    postLineComments: vi.fn(async () => {}),
     isOpen: async () => true,
     isConflicting: async () => false,
     clone: async (_r, n, dir) => {
