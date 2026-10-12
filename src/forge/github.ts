@@ -65,7 +65,8 @@ export class GitHubForge implements ForgeAdapter {
       headRef: p.head.ref,
       headSha: p.head.sha,
       baseRef: p.base.ref,
-      fromFork: p.head.repo?.full_name !== repo,
+      // GitHub names are case-insensitive; the configured repo may not match full_name's case.
+      fromFork: p.head.repo?.full_name.toLowerCase() !== repo.toLowerCase(),
       author: p.user.login,
     }));
   }

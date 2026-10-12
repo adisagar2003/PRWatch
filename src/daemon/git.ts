@@ -1,3 +1,6 @@
+// Thin git helpers for the conflict job (conflict.ts is the only caller): merge the
+// base branch into a PR checkout, find what is still unresolved, and commit/push the
+// result. Every command takes an injectable `git` so tests can fake or record it.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { runCommand } from '../run-command.js';
@@ -48,6 +51,23 @@ export async function hasConflictMarkers(dir: string, paths: string[]): Promise<
     if (CONFLICT_MARKER.test(text)) return true;
   }
   return false;
+}
+
+/**
+ * Paths the agent changed besides `allowed` (the conflicted files): unstaged edits and
+ * new files. Merge-staged files only show up here if the agent touched them afterwards.
+ */
+export async function changedOutside(
+  dir: string,
+  allowed: string[],
+  git: Git = defaultGit,
+): Promise<string[]> {
+  const out = [
+    await git(['diff', '--name-only'], dir),
+    await git(['ls-files', '--others', '--exclude-standard'], dir),
+  ].join('\n');
+  const ok = new Set(allowed);
+  return out.split('\n').filter((l) => l.trim() !== '' && !ok.has(l));
 }
 
 export async function stageAll(dir: string, git: Git = defaultGit): Promise<void> {

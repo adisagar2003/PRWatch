@@ -1,10 +1,14 @@
+// The conflict job: when auto-resolve is on, the daemon loop (loop.ts) calls this for
+// each watched PR GitHub reports as conflicting. It merges the base branch in a fresh
+// clone, lets the agent edit the conflicted files, verifies the result, and pushes a
+// merge commit to the PR branch. It is the only code path in prwatch that pushes.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ForgeAdapter, PR } from '../forge/types.js';
 import type { AgentAdapter } from '../agents/index.js';
 import { buildConflictPrompt } from '../prompt.js';
 import {
-  mergeBase, unmergedPaths, hasConflictMarkers, stageAll, commitMerge, pushBranch,
+  mergeBase, unmergedPaths, hasConflictMarkers, changedOutside, stageAll, commitMerge, pushBranch,
 } from './git.js';
 
 export type ConflictResult = 'resolved' | 'skipped' | 'failed';
@@ -50,6 +54,12 @@ export async function runConflictJob(
 
     if (await hasConflictMarkers(dir, files)) {
       throw new Error('conflict markers remain after the agent ran');
+    }
+    // Checkout files can carry prompt injection and `add -A` stages everything, so
+    // anything beyond the conflicted files must not ride along in a pushed commit.
+    const extra = await changedOutside(dir, files);
+    if (extra.length > 0) {
+      throw new Error(`agent changed files outside the conflicts: ${extra.join(', ')}`);
     }
     // Staging is what marks a conflict resolved; the agent only edits files.
     await stageAll(dir);
