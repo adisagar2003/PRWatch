@@ -155,5 +155,14 @@ describe('tick', () => {
       expect(forge.postComment).toHaveBeenCalledTimes(1);
       expect(state.repos['a/b'].chatCursor).toBe(5);
     });
+
+    it('baselines at tick start, so mentions made during a long review are not swallowed', async () => {
+      const state: State = { lastTickAt: null, repos: {} };
+      let t = Date.parse('2026-07-23T00:00:00Z');
+      const slowAgent: AgentAdapter = { ...okAgent, review: async () => { t += 10 * 60_000; return LONG_REVIEW; } };
+      const deps = { ...makeDeps(fakeForge([mkPr(2, '2026-07-22T00:00:00Z')]), slowAgent, state, { chat: true }), now: () => new Date(t) };
+      await tick(deps);
+      expect(state.repos['a/b'].chatSince).toBe('2026-07-23T00:00:00.000Z');
+    });
   });
 });

@@ -31,6 +31,8 @@ export async function tick(deps: TickDeps): Promise<void> {
   const { forge, agent, config, state, saveState, cacheRoot, log, now, notify: send } = deps;
   const announce = (msg: string) => { if (config.notifications) send('PRWatch', msg); };
   const timeoutMs = config.agentTimeoutMinutes * 60_000;
+  // Taken before any review runs: chat baselines here, so mentions made mid-review still count.
+  const tickStart = now();
 
   for (const repo of config.repos) {
     const rs = ensureRepoState(state, repo, now());
@@ -56,7 +58,7 @@ export async function tick(deps: TickDeps): Promise<void> {
       await saveState(state);
     }
 
-    if (config.chat) await answerMentions(deps, repo, prs, timeoutMs);
+    if (config.chat) await answerMentions(deps, repo, prs, timeoutMs, tickStart);
   }
 
   state.lastTickAt = now().toISOString();
@@ -65,10 +67,11 @@ export async function tick(deps: TickDeps): Promise<void> {
 
 const CHAT_OVERLAP_MS = 60_000;
 
-async function answerMentions(deps: TickDeps, repo: string, prs: PR[], timeoutMs: number) {
-  const { forge, agent, state, saveState, cacheRoot, log, now } = deps;
+async function answerMentions(
+  deps: TickDeps, repo: string, prs: PR[], timeoutMs: number, tickStart: Date,
+) {
+  const { forge, agent, state, saveState, cacheRoot, log } = deps;
   const rs = state.repos[repo];
-  const tickStart = now();
   if (rs.chatSince === undefined) {
     // No backlog: only mentions after chat was switched on get answers.
     rs.chatSince = tickStart.toISOString();

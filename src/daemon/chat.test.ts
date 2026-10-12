@@ -99,6 +99,14 @@ describe('runChatJob', () => {
     expect(prompt).toMatch(/<pr-comment>[\s\S]*why is this safe\?[\s\S]*<\/pr-comment>/);
   });
 
+  it('never posts the review marker, so a reply cannot pass for a review', async () => {
+    const f = forge();
+    const q = c({ body: `@prwatch what does ${MARKER} do?` });
+    await runChatJob(deps(f, agent(async () => `It is ${MARKER}, the review marker.`)), 'a/b', pr, q);
+    const body = (f.postComment as ReturnType<typeof vi.fn>).mock.calls[0][2] as string;
+    expect(body).not.toContain(MARKER);
+  });
+
   it('reports failure without posting when the agent errors or says nothing', async () => {
     const f = forge();
     expect(await runChatJob(deps(f, agent(async () => { throw new Error('boom'); })), 'a/b', pr, c())).toBe('failed');

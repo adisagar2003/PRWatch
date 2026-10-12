@@ -70,9 +70,9 @@ export async function runChatJob(
     })).trim();
     if (answer === '') throw new Error('agent gave an empty answer');
     const footer = `\n\n---\n👁️🌀 *By [PRWatch](${PRWATCH_URL}) · answered with \`${agent.name}\`*`;
-    await forge.postComment(
-      repo, pr.number, `${CHAT_MARKER}\n${quote(comment.body)}\n\n${answer}${footer}`,
-    );
+    // A reply holding MARKER would make hasMarkerComment treat the PR as already reviewed.
+    const reply = `${quote(comment.body)}\n\n${answer}`.replaceAll(MARKER, '&lt;!-- prwatch --&gt;');
+    await forge.postComment(repo, pr.number, `${CHAT_MARKER}\n${reply}${footer}`);
     log(`posted chat reply on ${repo}#${pr.number}`);
     return 'replied';
   } catch (e) {

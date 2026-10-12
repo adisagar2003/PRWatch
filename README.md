@@ -92,9 +92,9 @@ Tag `@prwatch` in a comment on any open PR in a watched repo and prwatch replies
 
 > @prwatch why does `retry()` not need a timeout here?
 
-- Only repo **owners, members and collaborators** get answers, so strangers on a public repo can't run your agent.
+- Only repo **owners, members and collaborators** get answers, so strangers on a public repo can't run your agent. Note "members" means anyone in the repo's org, and collaborators include read-only ones.
 - Only comments written after chat was switched on are answered. Each comment is answered once; a failed answer isn't retried, so tag again.
-- The agent runs read-only against a fresh clone of the PR, same as a review.
+- The agent runs against a fresh clone of the PR with the same CLI flags as a review. It is told not to change anything, but prwatch doesn't sandbox it: your agent's own permission settings are the real limit (see [Security](#security)).
 
 ## Security
 

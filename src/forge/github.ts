@@ -82,16 +82,16 @@ export class GitHubForge implements ForgeAdapter {
   }
 
   async listCommentsSince(repo: string, since: string): Promise<PRComment[]> {
-    // ponytail: one page of 100. More comments than that in one poll interval get missed;
-    // paginate (--paginate) if a busy repo needs it.
+    // Every page: the caller advances its cursor past what it sees, so a skipped page is lost.
     const { stdout } = await this.exec('gh', [
       'api',
       `repos/${repo}/issues/comments?since=${since}&sort=created&direction=asc&per_page=100`,
+      '--paginate', '--jq', '.[]',
     ]);
-    const raw = JSON.parse(stdout) as Array<{
+    const raw = stdout.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l) as {
       id: number; body?: string; user: { login: string } | null;
       author_association: string; issue_url: string;
-    }>;
+    });
     return raw.map((c) => ({
       id: c.id,
       pr: Number(c.issue_url.split('/').pop()),
