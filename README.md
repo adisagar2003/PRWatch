@@ -83,6 +83,16 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
 The default rubric lives at `~/.prwatch/rubric.md` — edit it freely.
 A repo can override it by committing `.prwatch/rubric.md` at its root.
 
+Every review opens with a **🎯 Merge Confidence** rating (High 🟢 / Medium 🟡 / Low 🔴,
+set by the issues found) and a **🧭 Review Order** Mermaid diagram showing which
+files to read first, colored red where 🔥 Critical or ⚠️ Major issues were found. GitHub draws the diagram
+inside the comment.
+
+An un-edited `~/.prwatch/rubric.md` is upgraded to the new default automatically.
+If you edited yours (or use a repo override), copy the *Merge confidence* and
+*Review order diagram* sections from `DEFAULT_RUBRIC` in
+[`src/rubric.ts`](./src/rubric.ts) to get them.
+
 ## Security
 
 Watching a public repo means running your agent against untrusted input: the PR title/body, and the PR's own files (which can include agent-instruction files like `CLAUDE.md` that an attacker committed to influence your agent). Recommendations:
