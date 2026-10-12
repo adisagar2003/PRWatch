@@ -5,6 +5,7 @@ import type { AgentAdapter } from '../agents/index.js';
 import type { ReviewProfile } from '../config.js';
 import { resolveRubric } from '../rubric.js';
 import { buildPrompt, reReviewNote, lineCommentsNote } from '../prompt.js';
+import { resolveLearnings } from '../learnings.js';
 import { splitReview, commentableLines, keepInDiff, formatCommentBody, type AgentLineComment } from '../review-comments.js';
 import { MARKER, headMarker } from '../forge/github.js';
 
@@ -89,7 +90,7 @@ export async function runReviewJob(
       return 'skipped-existing';
     }
     const rubric = await resolveRubric(dir);
-    const prompt = buildPrompt(rubric, repo, pr, profile) + (sinceSha ? reReviewNote(sinceSha) : '')
+    const prompt = buildPrompt(rubric, repo, pr, profile, await resolveLearnings(dir)) + (sinceSha ? reReviewNote(sinceSha) : '')
       + (lineComments ? lineCommentsNote() : '');
     const raw = (await agent.review({ cwd: dir, prompt, timeoutMs })).trim();
     const { summary: output, comments, error } = splitReview(raw);

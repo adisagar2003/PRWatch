@@ -80,3 +80,11 @@ describe('buildConflictPrompt', () => {
     expect(fenced(p)).toContain('Add login');
   });
 });
+
+describe('buildPrompt: learnings', () => {
+  it('puts learnings before the closing output instruction', () => {
+    const p = buildPrompt('MY RUBRIC', 'a/b', pr, 'chill', '\n\nLEARNINGS');
+    expect(p.indexOf('LEARNINGS')).toBeGreaterThan(p.indexOf('MY RUBRIC'));
+    expect(p.indexOf('LEARNINGS')).toBeLessThan(p.indexOf('Output ONLY'));
+  });
+});

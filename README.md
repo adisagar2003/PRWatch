@@ -114,6 +114,20 @@ If you edited yours (or use a repo override), copy the *Merge confidence* and
 *Review order diagram* sections from `DEFAULT_RUBRIC` in
 [`src/rubric.ts`](./src/rubric.ts) to get them.
 
+## Learnings
+
+Stop prwatch re-flagging things your team already decided. Write them as markdown bullets in:
+
+- `.prwatch/learnings.md` committed in the repo (shared with the team), and/or
+- `~/.prwatch/learnings.md` (yours, applies to every repo).
+
+```md
+- Default exports are fine in `src/pages/`.
+- We intentionally swallow errors in `telemetry.ts`.
+```
+
+Both are added to every review prompt (repo first, each capped at 4,000 characters). Like a repo rubric override, the repo file is read from the PR's own checkout, so a PR can change it — see Security.
+
 ## Chat
 
 Off by default. Turn it on with `"chat": true`.

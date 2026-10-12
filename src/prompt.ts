@@ -9,7 +9,9 @@ const PROFILE_TEXT: Record<ReviewProfile, string> = {
   assertive: `Review profile: assertive. Also report minor issues: naming, small refactors, missing tests for edge cases, and unclear code. Still pair every issue with a concrete fix.`,
 };
 
-export function buildPrompt(rubric: string, repo: string, pr: PR, profile: ReviewProfile = 'chill'): string {
+export function buildPrompt(
+  rubric: string, repo: string, pr: PR, profile: ReviewProfile = 'chill', learnings = '',
+): string {
   const profileText = PROFILE_TEXT[profile] ? `\n\n${PROFILE_TEXT[profile]}` : '';
   return `You are reviewing pull request #${pr.number} in ${repo}.
 You are inside a checkout of the PR branch. Inspect the changes with:
@@ -25,7 +27,7 @@ Description: ${pr.body || '(no description)'}
 
 Review the changes against this rubric:
 
-${rubric}${profileText}
+${rubric}${learnings}${profileText}
 
 Output ONLY the final review in GitHub-flavored markdown, following the rubric's output format. No preamble, no tool logs.`;
 }
