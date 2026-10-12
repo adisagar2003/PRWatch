@@ -72,7 +72,7 @@ disagree with the issues listed below it:
 | Level | Rule |
 |---|---|
 | **Low 🔴** | Any 🔥 Critical issue, **or** source code behavior changed with no tests (docs/config-only PRs are exempt) |
-| **Medium 🟡** | Any ⚠️ Major issue (and no Critical) |
+| **Medium 🟡** | Any ⚠️ Major issue (and Low doesn't apply) |
 | **High 🟢** | Neither of the above |
 
 Always followed by a one-line reason.
@@ -123,10 +123,10 @@ keeps the current default as `CANDID_V1_RUBRIC` and migrates it the same way.
 
 | Case | Behavior |
 |---|---|
-| Agent writes Mermaid that doesn't parse | GitHub shows an error box where the diagram should be. The rest of the comment still renders. We accept this; no validation step (see open question 2). |
+| Agent writes Mermaid that doesn't parse | GitHub shows an error box where the diagram should be. The rest of the comment still renders. We accept this; no validation step (see decision 2). |
 | Agent leaves out the sections | The comment posts without them. Same as any rubric section today: nothing enforces the format. |
 | Huge PR (100+ files) | Folder grouping keeps it ≤12 nodes. |
-| PR has no issues | Summary says so; Merge Confidence (High), Review Order and What's Good still appear. Only the empty issue categories are left out. |
+| PR has no issues | Summary says so; Merge Confidence (set by the usual rules), Review Order and What's Good still appear. Only the empty issue categories are left out. |
 | Only docs/config changed | The diagram still applies. Rating is High unless the agent flags issues. |
 | Malicious file name in the PR | Labels are quoted, and GitHub renders Mermaid in a sandbox (an isolated frame that can't touch the page), so the worst case is a broken diagram. |
 

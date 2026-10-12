@@ -85,7 +85,7 @@ A repo can override it by committing `.prwatch/rubric.md` at its root.
 
 Every review opens with a **🎯 Merge Confidence** rating (High 🟢 / Medium 🟡 / Low 🔴,
 set by the issues found) and a **🧭 Review Order** Mermaid diagram showing which
-files to read first, colored red where issues were found. GitHub draws the diagram
+files to read first, colored red where 🔥 Critical or ⚠️ Major issues were found. GitHub draws the diagram
 inside the comment.
 
 An un-edited `~/.prwatch/rubric.md` is upgraded to the new default automatically.

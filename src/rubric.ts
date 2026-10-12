@@ -46,7 +46,7 @@ Rate the whole PR, set by these rules so it always matches the issues you list:
 
 - **Low 🔴** any 🔥 Critical issue, or source code behavior changed with no tests
   (docs/config-only PRs never need tests)
-- **Medium 🟡** any ⚠️ Major issue, and no Critical
+- **Medium 🟡** any ⚠️ Major issue, and Low doesn't apply
 - **High 🟢** neither of the above
 
 Always follow the rating with a one-line reason. This is separate from the
@@ -95,7 +95,8 @@ point.
 
 1. **Summary** — one short paragraph: what the PR does and your overall assessment.
 2. **🎯 Merge Confidence:** High 🟢 | Medium 🟡 | Low 🔴 — one line on why.
-3. **🧭 Review Order** — the Mermaid diagram and per-node lines.
+3. **🧭 Review Order** — the Mermaid diagram and per-node lines (or the one-line
+   order for 1-2 files).
 4. **🔥 Critical Issues**
 5. **⚠️ Major Concerns**
 6. **📜 Standards Violations**
