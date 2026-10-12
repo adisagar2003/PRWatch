@@ -21,6 +21,16 @@ export interface LineComment {
   body: string;
 }
 
+/** A top-level comment on a PR (not a line comment). */
+export interface PRComment {
+  id: number;
+  pr: number;
+  body: string;
+  author: string;
+  /** GitHub's author_association: OWNER, MEMBER, COLLABORATOR, CONTRIBUTOR, NONE, ... */
+  association: string;
+}
+
 export interface ForgeAdapter {
   name: string;
   listOpenPRs(repo: string): Promise<PR[]>;
@@ -32,6 +42,8 @@ export interface ForgeAdapter {
   clone(repo: string, pr: number, dir: string): Promise<string>;
   /** Whether any comment contains marker (default: any prwatch review). */
   hasMarkerComment(repo: string, pr: number, marker?: string): Promise<boolean>;
+  /** Comments on any issue or PR in the repo created or edited since an ISO time, oldest first. */
+  listCommentsSince(repo: string, since: string): Promise<PRComment[]>;
   postComment(repo: string, pr: number, body: string): Promise<void>;
   /** The unified diff of headSha against baseRef's merge base: the PR diff, frozen at that commit. */
   getDiff(repo: string, baseRef: string, headSha: string): Promise<string>;

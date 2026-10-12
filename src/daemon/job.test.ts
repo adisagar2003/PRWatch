@@ -40,6 +40,7 @@ function fakeForge(over: Partial<ForgeAdapter> = {}, clonedHead = 'sha1'): Forge
     listOpenPRs: async () => [],
     getDiff: async () => DIFF,
     postLineComments: vi.fn(async () => {}),
+    listCommentsSince: async () => [],
     isOpen: async () => true,
     isConflicting: async () => false,
     clone: async (_repo, _pr, dir) => { await fs.mkdir(dir, { recursive: true }); return clonedHead; },

@@ -24,7 +24,7 @@ export interface JobDeps {
 
 const MIN_OUTPUT_CHARS = 50;
 
-const PRWATCH_URL = 'https://github.com/adisagar2003/PRWatch';
+export const PRWATCH_URL = 'https://github.com/adisagar2003/PRWatch';
 
 function attribution(agentName: string): string {
   return `\n\n---\n👁️🌀 *By [PRWatch](${PRWATCH_URL}) · reviewed with \`${agentName}\`*`;

@@ -134,4 +134,20 @@ describe('GitHubForge', () => {
       ],
     });
   });
+
+  it('listCommentsSince reads every page of repo-wide comments and maps them to PR numbers', async () => {
+    const row = (id: number, pr: number) => JSON.stringify({
+      id, body: '@prwatch hi', user: { login: 'tm' }, author_association: 'MEMBER',
+      issue_url: `https://api.github.com/repos/a/b/issues/${pr}`,
+    });
+    // --jq '.[]' prints one comment per line across all pages.
+    const { exec, calls } = fakeExec({ 'gh api repos/a/b/issues/comments': `${row(11, 7)}\n${row(12, 8)}\n` });
+    const out = await new GitHubForge(exec).listCommentsSince('a/b', '2026-07-22T00:00:00.000Z');
+    expect(out).toEqual([
+      { id: 11, pr: 7, body: '@prwatch hi', author: 'tm', association: 'MEMBER' },
+      { id: 12, pr: 8, body: '@prwatch hi', author: 'tm', association: 'MEMBER' },
+    ]);
+    expect(calls[0].join(' ')).toContain('since=2026-07-22T00:00:00.000Z');
+    expect(calls[0]).toContain('--paginate');
+  });
 });

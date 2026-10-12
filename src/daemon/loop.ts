@@ -8,10 +8,11 @@ import {
 import { ensureHomeRubric } from '../rubric.js';
 import { GitHubForge, checkGhAuth } from '../forge/github.js';
 import { getAgent, type AgentAdapter } from '../agents/index.js';
-import type { ForgeAdapter } from '../forge/types.js';
+import type { ForgeAdapter, PR } from '../forge/types.js';
 import { prsNeedingReview, prsNeedingConflictCheck } from './filter.js';
 import { runReviewJob } from './job.js';
 import { runConflictJob } from './conflict.js';
+import { selectChatRequests, runChatJob } from './chat.js';
 import { createLogger } from './log.js';
 import { killActiveProcessGroups } from '../run-command.js';
 import { notify } from '../notify.js';
@@ -32,6 +33,8 @@ export async function tick(deps: TickDeps): Promise<void> {
   const { forge, agent, config, state, saveState, cacheRoot, log, now, notify: send } = deps;
   const announce = (msg: string) => { if (config.notifications) send('PRWatch', msg); };
   const timeoutMs = config.agentTimeoutMinutes * 60_000;
+  // Taken before any review runs: chat baselines here, so mentions made mid-review still count.
+  const tickStart = now();
 
   for (const repo of config.repos) {
     const rs = ensureRepoState(state, repo, now());
@@ -68,6 +71,8 @@ export async function tick(deps: TickDeps): Promise<void> {
       await saveState(state);
     }
 
+    if (config.chat) await answerMentions(deps, repo, prs, timeoutMs, tickStart);
+
     if (!config.autoResolveConflicts) continue;
     pruneConflictAttempts(rs, prs);
     for (const pr of prsNeedingConflictCheck(prs, rs)) {
@@ -86,6 +91,40 @@ export async function tick(deps: TickDeps): Promise<void> {
   }
 
   state.lastTickAt = now().toISOString();
+  await saveState(state);
+}
+
+const CHAT_OVERLAP_MS = 60_000;
+
+async function answerMentions(
+  deps: TickDeps, repo: string, prs: PR[], timeoutMs: number, tickStart: Date,
+) {
+  const { forge, agent, state, saveState, cacheRoot, log } = deps;
+  const rs = state.repos[repo];
+  if (rs.chatSince === undefined) {
+    // No backlog: only mentions after chat was switched on get answers.
+    rs.chatSince = tickStart.toISOString();
+    await saveState(state);
+    return;
+  }
+  let comments;
+  try {
+    const since = new Date(Date.parse(rs.chatSince) - CHAT_OVERLAP_MS).toISOString();
+    comments = await forge.listCommentsSince(repo, since);
+  } catch (e) {
+    log(`could not list comments for ${repo}: ${(e as Error).message}`);
+    return;
+  }
+  const cursor = rs.chatCursor ?? 0;
+  const byNumber = new Map(prs.map((p) => [p.number, p]));
+  for (const c of selectChatRequests(comments, prs, cursor)) {
+    // Failures aren't retried: the asker can tag again.
+    await runChatJob({ forge, agent, cacheRoot, timeoutMs, log }, repo, byNumber.get(c.pr)!, c);
+    rs.chatCursor = c.id;
+    await saveState(state);
+  }
+  rs.chatCursor = Math.max(cursor, rs.chatCursor ?? 0, ...comments.map((c) => c.id));
+  rs.chatSince = tickStart.toISOString();
   await saveState(state);
 }
 

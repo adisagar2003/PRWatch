@@ -11,6 +11,10 @@ export interface RepoState {
   conflictAttempts?: Record<string, number>;
   /** Head SHA the last posted review covered, keyed by PR number. A newer head earns a re-review. */
   reviewedHeads?: Record<string, string>;
+  /** Chat: comments are listed from this ISO time on; unset = chat hasn't started for this repo. */
+  chatSince?: string;
+  /** Chat: highest comment id already handled, so re-listed comments aren't answered twice. */
+  chatCursor?: number;
 }
 
 export interface State {

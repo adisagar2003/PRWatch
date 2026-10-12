@@ -20,6 +20,8 @@ export interface Config {
   profile: ReviewProfile;
   /** Also post issues as comments on the changed lines, with one-click suggested fixes. */
   lineComments: boolean;
+  /** Answer "@prwatch …" questions from repo collaborators in PR comments. */
+  chat: boolean;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -32,6 +34,7 @@ export const DEFAULT_CONFIG: Config = {
   reReviewOnPush: true,
   profile: 'chill',
   lineComments: false,
+  chat: false,
 };
 
 function validateConfig(c: unknown): Config {
@@ -76,6 +79,11 @@ function validateConfig(c: unknown): Config {
 
   if (typeof merged.lineComments !== 'boolean') {
     throw new Error('lineComments must be a boolean');
+  }
+
+  // Validate chat
+  if (typeof merged.chat !== 'boolean') {
+    throw new Error('chat must be a boolean');
   }
 
   // Validate notifications

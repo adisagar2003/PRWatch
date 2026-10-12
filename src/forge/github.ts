@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { runCommand } from '../run-command.js';
-import type { ForgeAdapter, LineComment, PR } from './types.js';
+import type { ForgeAdapter, LineComment, PR, PRComment } from './types.js';
 
 export const MARKER = '<!-- prwatch -->';
 /** Second, per-head marker: lets a re-review check it hasn't already posted for this exact commit. */
@@ -106,6 +106,26 @@ export class GitHubForge implements ForgeAdapter {
     // May be newer than the PR listing if the author pushed in between.
     const { stdout } = await this.exec('git', ['rev-parse', 'HEAD'], { cwd: dir });
     return stdout.trim();
+  }
+
+  async listCommentsSince(repo: string, since: string): Promise<PRComment[]> {
+    // Every page: the caller advances its cursor past what it sees, so a skipped page is lost.
+    const { stdout } = await this.exec('gh', [
+      'api',
+      `repos/${repo}/issues/comments?since=${since}&sort=created&direction=asc&per_page=100`,
+      '--paginate', '--jq', '.[]',
+    ]);
+    const raw = stdout.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l) as {
+      id: number; body?: string; user: { login: string } | null;
+      author_association: string; issue_url: string;
+    });
+    return raw.map((c) => ({
+      id: c.id,
+      pr: Number(c.issue_url.split('/').pop()),
+      body: c.body ?? '',
+      author: c.user?.login ?? 'ghost',
+      association: c.author_association,
+    }));
   }
 
   async hasMarkerComment(repo: string, pr: number, marker = MARKER): Promise<boolean> {
