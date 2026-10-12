@@ -53,6 +53,7 @@ function validateConfig(c: unknown): Config {
     throw new Error('agentTimeoutMinutes must be a finite number > 0');
   }
 
+  // Validate chat
   if (typeof merged.chat !== 'boolean') {
     throw new Error('chat must be a boolean');
   }

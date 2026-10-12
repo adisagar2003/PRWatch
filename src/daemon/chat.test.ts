@@ -42,6 +42,12 @@ describe('selectChatRequests', () => {
     expect(selectChatRequests([c({ body: 'hey @PRWatch, thoughts?' })], [pr], 0)).toHaveLength(1);
   });
 
+  it('ignores a mention that only appears in a quote (e.g. "Quote reply" on a prwatch answer)', () => {
+    expect(selectChatRequests([c({ body: '> @prwatch why is this safe?\n\nthanks, makes sense' })], [pr], 0))
+      .toEqual([]);
+    expect(selectChatRequests([c({ body: '> earlier point\n@prwatch and this?' })], [pr], 0)).toHaveLength(1);
+  });
+
   it("never answers prwatch's own reviews or replies (they run under your account)", () => {
     for (const body of [`${MARKER}\n@prwatch`, `${CHAT_MARKER}\n> @prwatch q`]) {
       expect(selectChatRequests([c({ body, association: 'OWNER' })], [pr], 0)).toEqual([]);

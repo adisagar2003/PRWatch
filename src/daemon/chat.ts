@@ -15,10 +15,16 @@ import { PRWATCH_URL } from './job.js';
 /** Marks chat replies. Deliberately not MARKER, so a reply never counts as "already reviewed". */
 export const CHAT_MARKER = '<!-- prwatch-chat -->';
 
-/** GitHub author_association values with write access. Everyone else is ignored. */
+/**
+ * GitHub author_association values we answer. Not the same as write access: MEMBER is any
+ * member of the owning org, COLLABORATOR any invited collaborator (even read-only).
+ */
 const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
 const MENTION = /(^|[^\w@.])@prwatch(?![\w-])/i;
+
+/** Drops "> …" lines, so quoting an earlier question doesn't ask it again. */
+const unquoted = (body: string) => body.split('\n').filter((l) => !/^\s*>/.test(l)).join('\n');
 
 export type ChatResult = 'replied' | 'failed';
 
@@ -38,7 +44,7 @@ export function selectChatRequests(comments: PRComment[], open: PR[], cursor: nu
       c.id > cursor &&
       openPrs.has(c.pr) &&
       TRUSTED.has(c.association) &&
-      MENTION.test(c.body) &&
+      MENTION.test(unquoted(c.body)) &&
       // prwatch posts as your gh account, so its own comments look like yours.
       !c.body.includes(MARKER) &&
       !c.body.includes(CHAT_MARKER),
