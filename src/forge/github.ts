@@ -49,6 +49,17 @@ export class GitHubForge implements ForgeAdapter {
 
   constructor(private exec: Exec = defaultExec) {}
 
+  private login?: Promise<string>;
+
+  /** The gh user prwatch posts as, looked up once; a failed lookup is retried next call. */
+  private viewer(): Promise<string> {
+    this.login ??= this.exec('gh', ['api', 'user', '--jq', '.login']).then(
+      ({ stdout }) => stdout.trim(),
+      (e) => { this.login = undefined; throw e; },
+    );
+    return this.login;
+  }
+
   async listOpenPRs(repo: string): Promise<PR[]> {
     const { stdout } = await this.exec('gh', [
       'api',
@@ -84,7 +95,7 @@ export class GitHubForge implements ForgeAdapter {
     return (JSON.parse(stdout) as { mergeable: boolean | null }).mergeable === false;
   }
 
-  async clone(repo: string, pr: number, dir: string): Promise<void> {
+  async clone(repo: string, pr: number, dir: string): Promise<string> {
     await this.exec('gh', ['repo', 'clone', repo, dir, '--', '--depth', '50']);
     // Not `gh pr checkout`: shallow clones are implicitly single-branch, so it
     // cannot create a tracking branch. refs/pull/N/head also covers fork PRs.
@@ -92,15 +103,25 @@ export class GitHubForge implements ForgeAdapter {
       cwd: dir,
     });
     await this.exec('git', ['checkout', 'prwatch-pr'], { cwd: dir });
+    // May be newer than the PR listing if the author pushed in between.
+    const { stdout } = await this.exec('git', ['rev-parse', 'HEAD'], { cwd: dir });
+    return stdout.trim();
   }
 
   async hasMarkerComment(repo: string, pr: number, marker = MARKER): Promise<boolean> {
+    const me = await this.viewer();
+    // --paginate prints one JSON array per page, which don't join into valid JSON,
+    // so --jq emits one comment object per line instead.
     const { stdout } = await this.exec('gh', [
-      'api',
+      'api', '--paginate',
       `repos/${repo}/issues/${pr}/comments?per_page=100`,
+      '--jq', '.[] | {login: .user.login, body} | @json',
     ]);
-    const comments = JSON.parse(stdout) as Array<{ body?: string }>;
-    return comments.some((c) => typeof c.body === 'string' && c.body.includes(marker));
+    // Only our own comments count: anyone can post a marker to suppress a review.
+    return stdout.split('\n').filter((l) => l.trim() !== '').some((line) => {
+      const c = JSON.parse(line) as { login?: string; body?: string };
+      return c.login === me && typeof c.body === 'string' && c.body.includes(marker);
+    });
   }
 
   async postComment(repo: string, pr: number, body: string): Promise<void> {

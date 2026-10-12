@@ -45,8 +45,8 @@ describe('GitHubForge', () => {
   });
 
   it('clone shallow-clones then checks out the PR head via the fork-safe pull ref', async () => {
-    const { exec, calls } = fakeExec({});
-    await new GitHubForge(exec).clone('a/b', 7, '/tmp/x');
+    const { exec, calls } = fakeExec({ 'git rev-parse HEAD': 'cafe123\n' });
+    expect(await new GitHubForge(exec).clone('a/b', 7, '/tmp/x')).toBe('cafe123');
     expect(calls[0]).toEqual(['gh', 'repo', 'clone', 'a/b', '/tmp/x', '--', '--depth', '50']);
     // gh pr checkout breaks in shallow (implicitly single-branch) clones:
     // it cannot create tracking branches, so fetch refs/pull/N/head directly.
@@ -61,22 +61,40 @@ describe('GitHubForge', () => {
     expect(await new GitHubForge(closedExec).isOpen('a/b', 7)).toBe(false);
   });
 
-  it('hasMarkerComment detects the marker', async () => {
-    const comments = JSON.stringify([{ body: 'hi' }, { body: `${MARKER}\nold review` }]);
-    const { exec } = fakeExec({ 'gh api repos/a/b/issues/7/comments': comments });
+  /** gh --paginate --jq output: one comment per line, as many pages as GitHub returns. */
+  const lines = (...cs: Array<{ login: string; body: string }>) =>
+    cs.map((c) => JSON.stringify(c)).join('\n') + '\n';
+  const markerForge = (comments: string) => fakeExec({
+    'gh api user': 'prwatch-bot\n',
+    'gh api --paginate repos/a/b/issues/7/comments': comments,
+  });
+
+  it('hasMarkerComment detects our marker on any page', async () => {
+    const page1 = Array.from({ length: 100 }, () => ({ login: 'someone', body: 'hi' }));
+    const { exec, calls } = markerForge(
+      lines(...page1, { login: 'prwatch-bot', body: `${MARKER}\nold review` }),
+    );
     expect(await new GitHubForge(exec).hasMarkerComment('a/b', 7)).toBe(true);
+    expect(calls.find((c) => c.includes('--paginate'))).toContain('--jq');
+  });
+
+  it('hasMarkerComment ignores markers posted by anyone else', async () => {
+    const { exec } = markerForge(lines({ login: 'pr-author', body: `${MARKER}\n${headMarker('sha1')}` }));
+    const forge = new GitHubForge(exec);
+    expect(await forge.hasMarkerComment('a/b', 7)).toBe(false);
+    expect(await forge.hasMarkerComment('a/b', 7, headMarker('sha1'))).toBe(false);
   });
 
   it('hasMarkerComment can look for a specific head marker', async () => {
-    const comments = JSON.stringify([{ body: `${MARKER}\n${headMarker('sha1')}\nold` }]);
-    const { exec } = fakeExec({ 'gh api repos/a/b/issues/7/comments': comments });
+    const { exec, calls } = markerForge(lines({ login: 'prwatch-bot', body: `${MARKER}\n${headMarker('sha1')}\nold` }));
     const forge = new GitHubForge(exec);
     expect(await forge.hasMarkerComment('a/b', 7, headMarker('sha1'))).toBe(true);
     expect(await forge.hasMarkerComment('a/b', 7, headMarker('sha2'))).toBe(false);
+    expect(calls.filter((c) => c.join(' ') === 'gh api user --jq .login')).toHaveLength(1);
   });
 
-  it('hasMarkerComment is false without the marker', async () => {
-    const { exec } = fakeExec({ 'gh api repos/a/b/issues/7/comments': '[]' });
+  it('hasMarkerComment is false without comments', async () => {
+    const { exec } = markerForge('');
     expect(await new GitHubForge(exec).hasMarkerComment('a/b', 7)).toBe(false);
   });
 
