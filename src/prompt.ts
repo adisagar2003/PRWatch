@@ -1,6 +1,6 @@
 import type { PR } from './forge/types.js';
 
-export function buildPrompt(rubric: string, repo: string, pr: PR): string {
+export function buildPrompt(rubric: string, repo: string, pr: PR, learnings = ''): string {
   return `You are reviewing pull request #${pr.number} in ${repo}.
 You are inside a checkout of the PR branch. Inspect the changes with:
   git log --oneline -20
@@ -15,7 +15,7 @@ Description: ${pr.body || '(no description)'}
 
 Review the changes against this rubric:
 
-${rubric}
+${rubric}${learnings}
 
 Output ONLY the final review in GitHub-flavored markdown, following the rubric's output format. No preamble, no tool logs.`;
 }

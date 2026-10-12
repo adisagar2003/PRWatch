@@ -46,7 +46,7 @@ export async function runReviewJob(deps: JobDeps, repo: string, pr: PR): Promise
     log(`reviewing ${repo}#${pr.number} "${pr.title}" with ${agent.name}`);
     await forge.clone(repo, pr.number, dir);
     const rubric = await resolveRubric(dir);
-    const prompt = buildPrompt(rubric, repo, pr) + (await resolveLearnings(dir));
+    const prompt = buildPrompt(rubric, repo, pr, await resolveLearnings(dir));
     const output = (await agent.review({ cwd: dir, prompt, timeoutMs })).trim();
     if (output.length < MIN_OUTPUT_CHARS) {
       throw new Error(`agent output too short (${output.length} chars)`);

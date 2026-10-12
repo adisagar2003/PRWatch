@@ -49,6 +49,13 @@ describe('resolveLearnings', () => {
     expect(out.length).toBeLessThan(MAX_LEARNINGS_CHARS + 500);
   });
 
+  it('refuses a repo learnings file that symlinks outside the checkout', async () => {
+    const secret = path.join(tmp, 'secret.txt');
+    await fs.writeFile(secret, 'PRIVATE KEY');
+    await fs.symlink(secret, repoFile());
+    await expect(resolveLearnings(clone)).rejects.toThrow(/outside the checkout/);
+  });
+
   it('throws a clear error when a learnings path is unreadable', async () => {
     await fs.mkdir(learningsPath());
     await expect(resolveLearnings(clone)).rejects.toThrow(/learnings/);

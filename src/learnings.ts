@@ -10,9 +10,15 @@ import { learningsPath } from './paths.js';
 /** Per file. Keeps a runaway learnings file from crowding the diff out of the prompt. */
 export const MAX_LEARNINGS_CHARS = 4000;
 
-async function readCapped(file: string): Promise<string> {
+/** `root`, when given, is a directory the file must really live in (after following symlinks). */
+async function readCapped(file: string, root?: string): Promise<string> {
   let text: string;
   try {
+    // A PR can commit learnings.md as a symlink to e.g. ~/.ssh/id_rsa; reading it
+    // would paste that secret into the prompt and possibly the public review.
+    if (root && !(await fs.realpath(file)).startsWith((await fs.realpath(root)) + path.sep)) {
+      throw new Error('it resolves outside the checkout');
+    }
     text = (await fs.readFile(file, 'utf8')).trim();
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return '';
@@ -24,7 +30,7 @@ async function readCapped(file: string): Promise<string> {
 /** The prompt block to append, or '' when there are no learnings. Repo learnings come first. */
 export async function resolveLearnings(cloneDir: string): Promise<string> {
   const parts = [
-    await readCapped(path.join(cloneDir, '.prwatch', 'learnings.md')),
+    await readCapped(path.join(cloneDir, '.prwatch', 'learnings.md'), cloneDir),
     await readCapped(learningsPath()),
   ].filter((p) => p !== '');
   if (parts.length === 0) return '';
