@@ -87,13 +87,20 @@ describe('runConflictJob', () => {
       await fs.writeFile(path.join(cwd, 'file.txt'), 'moved base + feature\n');
       return 'resolved file.txt';
     });
+    const featureTip = (await runCommand('git', ['rev-parse', 'feature'], { cwd: origin, timeoutMs: 30_000 })).trim();
     let reported = '';
-    const d = { ...deps(forge(), resolver), onPushed: (sha: string) => { reported = sha; } };
+    let base = '';
+    const d = {
+      ...deps(forge(), resolver),
+      onPushed: (before: string, after: string) => { base = before; reported = after; },
+    };
     expect(await runConflictJob(d, 'a/b', pr)).toBe('resolved');
     expect(await pushedContent()).toBe('moved base + feature\n');
     // The SHA it reports is the one now on the branch, so the loop can skip re-reviewing it.
     const tip = await runCommand('git', ['rev-parse', 'feature'], { cwd: origin, timeoutMs: 30_000 });
     expect(reported).toBe(tip.trim());
+    // ...and the head it merged into is the one the clone had, not the listing's.
+    expect(base).toBe(featureTip);
     await expect(fs.readdir(path.join(tmp, 'cache'))).resolves.toEqual([]);
   });
 

@@ -70,7 +70,7 @@ export async function tick(deps: TickDeps): Promise<void> {
     if (!config.autoResolveConflicts) continue;
     pruneConflictAttempts(rs, prs);
     for (const pr of prsNeedingConflictCheck(prs, rs)) {
-      const onPushed = (sha: string) => markOwnPush(rs, pr.number, pr.headSha, sha);
+      const onPushed = (before: string, after: string) => markOwnPush(rs, pr.number, before, after);
       const result = await runConflictJob(
         { forge, agent, cacheRoot, timeoutMs, log, onPushed }, repo, pr,
       );
