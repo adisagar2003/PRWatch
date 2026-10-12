@@ -1,3 +1,6 @@
+// Thin git helpers for the conflict job (conflict.ts is the only caller): merge the
+// base branch into a PR checkout, find what is still unresolved, and commit/push the
+// result. Every command takes an injectable `git` so tests can fake or record it.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { runCommand } from '../run-command.js';
@@ -33,10 +36,12 @@ export async function mergeBase(
   }
 }
 
+/** NUL-separated (`-z`) git output: without -z git quotes non-ASCII paths, which then can't be opened. */
+const paths = (out: string) => out.split('\0').filter((p) => p !== '');
+
 /** Files git still considers unresolved. */
 export async function unmergedPaths(dir: string, git: Git = defaultGit): Promise<string[]> {
-  const out = await git(['diff', '--name-only', '--diff-filter=U'], dir);
-  return out.split('\n').filter((l) => l.trim() !== '');
+  return paths(await git(['diff', '-z', '--name-only', '--diff-filter=U'], dir));
 }
 
 const CONFLICT_MARKER = /^(<{7}|={7}|>{7})( |$)/m;
@@ -48,6 +53,23 @@ export async function hasConflictMarkers(dir: string, paths: string[]): Promise<
     if (CONFLICT_MARKER.test(text)) return true;
   }
   return false;
+}
+
+/**
+ * Paths the agent changed besides `allowed` (the conflicted files): unstaged edits and
+ * new files. Merge-staged files only show up here if the agent touched them afterwards.
+ */
+export async function changedOutside(
+  dir: string,
+  allowed: string[],
+  git: Git = defaultGit,
+): Promise<string[]> {
+  const changed = [
+    ...paths(await git(['diff', '-z', '--name-only'], dir)),
+    ...paths(await git(['ls-files', '-z', '--others', '--exclude-standard'], dir)),
+  ];
+  const ok = new Set(allowed);
+  return changed.filter((p) => !ok.has(p));
 }
 
 export async function stageAll(dir: string, git: Git = defaultGit): Promise<void> {
