@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ForgeAdapter, PR } from '../forge/types.js';
 import type { AgentAdapter } from '../agents/index.js';
+import type { ReviewProfile } from '../config.js';
 import { resolveRubric } from '../rubric.js';
 import { buildPrompt, reReviewNote } from '../prompt.js';
 import { MARKER, headMarker } from '../forge/github.js';
@@ -16,6 +17,7 @@ export interface JobDeps {
   log: (msg: string) => void;
   /** Called with the head the clone actually has — newer than the listing if the author just pushed. */
   onReviewedHead?: (sha: string) => void;
+  profile?: ReviewProfile;
 }
 
 const MIN_OUTPUT_CHARS = 50;
@@ -30,7 +32,7 @@ function attribution(agentName: string): string {
 export async function runReviewJob(
   deps: JobDeps, repo: string, pr: PR, sinceSha?: string,
 ): Promise<JobResult> {
-  const { forge, agent, cacheRoot, timeoutMs, log } = deps;
+  const { forge, agent, cacheRoot, timeoutMs, log, profile } = deps;
 
   const dir = path.join(cacheRoot, `${repo.replace('/', '-')}-${pr.number}`);
 
@@ -62,7 +64,7 @@ export async function runReviewJob(
       return 'skipped-existing';
     }
     const rubric = await resolveRubric(dir);
-    const prompt = buildPrompt(rubric, repo, pr) + (sinceSha ? reReviewNote(sinceSha) : '');
+    const prompt = buildPrompt(rubric, repo, pr, profile) + (sinceSha ? reReviewNote(sinceSha) : '');
     const output = (await agent.review({ cwd: dir, prompt, timeoutMs })).trim();
     if (output.length < MIN_OUTPUT_CHARS) {
       throw new Error(`agent output too short (${output.length} chars)`);
