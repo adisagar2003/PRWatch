@@ -26,13 +26,13 @@ const pr: PR = {
 
 const LONG_REVIEW = 'Verdict: APPROVE. '.repeat(10); // > 50 chars
 
-function fakeForge(over: Partial<ForgeAdapter> = {}): ForgeAdapter {
+function fakeForge(over: Partial<ForgeAdapter> = {}, clonedHead = 'sha1'): ForgeAdapter {
   return {
     name: 'fake',
     listOpenPRs: async () => [],
     isOpen: async () => true,
     isConflicting: async () => false,
-    clone: async (_repo, _pr, dir) => { await fs.mkdir(dir, { recursive: true }); },
+    clone: async (_repo, _pr, dir) => { await fs.mkdir(dir, { recursive: true }); return clonedHead; },
     hasMarkerComment: async () => false,
     postComment: vi.fn(async () => {}),
     ...over,
@@ -77,6 +77,34 @@ describe('runReviewJob: re-review', () => {
     const forge = fakeForge({ hasMarkerComment: async (_r, _p, m) => { seen.push(m); return false; } });
     await runReviewJob(deps(forge, fakeAgent(async () => LONG_REVIEW)), 'a/b', pr, 'old');
     expect(seen).toEqual([headMarker('sha1')]);
+  });
+
+  it('stamps and reports the cloned head when the author pushed after the listing', async () => {
+    const seen: (string | undefined)[] = [];
+    const forge = fakeForge({ hasMarkerComment: async (_r, _p, m) => { seen.push(m); return false; } }, 'sha2');
+    const reported: string[] = [];
+    const d = { ...deps(forge, fakeAgent(async () => LONG_REVIEW)), onReviewedHead: (s: string) => reported.push(s) };
+    expect(await runReviewJob(d, 'a/b', pr, 'old')).toBe('posted');
+    expect(seen).toEqual([headMarker('sha1'), headMarker('sha2')]);
+    expect(bodyOf(forge)).toContain(headMarker('sha2'));
+    expect(bodyOf(forge)).not.toContain(headMarker('sha1'));
+    expect(reported).toEqual(['sha2']);
+  });
+
+  it('skips when the newer cloned head was already reviewed', async () => {
+    const forge = fakeForge({ hasMarkerComment: async (_r, _p, m) => m === headMarker('sha2') }, 'sha2');
+    const result = await runReviewJob(deps(forge, fakeAgent(async () => LONG_REVIEW)), 'a/b', pr, 'old');
+    expect(result).toBe('skipped-existing');
+    expect(forge.postComment).not.toHaveBeenCalled();
+  });
+
+  it('skips without posting when the cloned head is the one already reviewed', async () => {
+    const forge = fakeForge({}, 'old');
+    const agent = fakeAgent(vi.fn(async () => LONG_REVIEW));
+    const result = await runReviewJob(deps(forge, agent), 'a/b', pr, 'old');
+    expect(result).toBe('skipped-existing');
+    expect(agent.review).not.toHaveBeenCalled();
+    expect(forge.postComment).not.toHaveBeenCalled();
   });
 });
 
@@ -164,6 +192,7 @@ describe('runReviewJob', () => {
       clone: async (_r, _p, dir) => {
         await fs.mkdir(path.join(dir, '.prwatch'), { recursive: true });
         await fs.writeFile(path.join(dir, '.prwatch', 'rubric.md'), 'REPO SPECIFIC RUBRIC');
+        return 'sha1';
       },
     });
     const agent = fakeAgent(async () => LONG_REVIEW);

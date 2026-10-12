@@ -49,7 +49,11 @@ export async function tick(deps: TickDeps): Promise<void> {
         : undefined;
       // ponytail: a re-review failing MAX_ATTEMPTS times marks the PR failed for good, same
       // as a first review. Per-head failure counters (like conflictAttempts) if that bites.
-      const result = await runReviewJob({ forge, agent, cacheRoot, timeoutMs, log }, repo, pr, sinceSha);
+      let reviewedHead = pr.headSha;
+      const onReviewedHead = (sha: string) => { reviewedHead = sha; };
+      const result = await runReviewJob(
+        { forge, agent, cacheRoot, timeoutMs, log, onReviewedHead }, repo, pr, sinceSha,
+      );
       if (result === 'failed') {
         recordFailure(rs, pr.number);
         // Only once we've given up — retries would otherwise notify MAX_ATTEMPTS times.
@@ -57,7 +61,7 @@ export async function tick(deps: TickDeps): Promise<void> {
           announce(`review failed for ${repo}#${pr.number} · ${pr.title}`);
         }
       } else {
-        recordReviewed(rs, pr.number, pr.headSha);
+        recordReviewed(rs, pr.number, reviewedHead);
         if (result === 'posted') announce(`posted review for ${repo}#${pr.number} · ${pr.title}`);
       }
       await saveState(state);

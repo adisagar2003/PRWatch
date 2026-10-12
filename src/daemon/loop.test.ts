@@ -33,7 +33,10 @@ function fakeForge(prs: PR[]): ForgeAdapter {
     listOpenPRs: async () => prs,
     isOpen: async () => true,
     isConflicting: async () => false,
-    clone: async (_r, _p, dir) => { await fs.mkdir(dir, { recursive: true }); },
+    clone: async (_r, n, dir) => {
+      await fs.mkdir(dir, { recursive: true });
+      return prs.find((p) => p.number === n)!.headSha;
+    },
     hasMarkerComment: async () => false,
     postComment: vi.fn(async () => {}),
   };
@@ -159,6 +162,14 @@ describe('tick conflict resolution', () => {
     await tick(makeDeps(forge, agent, state));
     expect(forge.postComment).toHaveBeenCalledTimes(2);
     expect(prompt).toContain('git diff sha1 HEAD');
+    expect(state.repos['a/b'].reviewedHeads).toEqual({ '1': 'sha2' });
+  });
+
+  it('records the head the clone actually reviewed, not the stale listing one', async () => {
+    const state: State = { lastTickAt: null, repos: {} };
+    const forge = fakeForge([mkPr(1, '2026-07-22T00:00:00Z')]);
+    forge.clone = async (_r, _p, dir) => { await fs.mkdir(dir, { recursive: true }); return 'sha2'; };
+    await tick(makeDeps(forge, okAgent, state));
     expect(state.repos['a/b'].reviewedHeads).toEqual({ '1': 'sha2' });
   });
 

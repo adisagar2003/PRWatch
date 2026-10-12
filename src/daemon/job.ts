@@ -14,6 +14,8 @@ export interface JobDeps {
   cacheRoot: string;
   timeoutMs: number;
   log: (msg: string) => void;
+  /** Called with the head the clone actually has — newer than the listing if the author just pushed. */
+  onReviewedHead?: (sha: string) => void;
 }
 
 const MIN_OUTPUT_CHARS = 50;
@@ -47,7 +49,18 @@ export async function runReviewJob(
     await fs.mkdir(cacheRoot, { recursive: true });
 
     log(`reviewing ${repo}#${pr.number} "${pr.title}" with ${agent.name}`);
-    await forge.clone(repo, pr.number, dir);
+    // The author may have pushed since the listing; review and stamp what we actually cloned.
+    const head = await forge.clone(repo, pr.number, dir);
+    deps.onReviewedHead?.(head);
+    if (head === sinceSha) {
+      log(`skip ${repo}#${pr.number}: no new commits since ${sinceSha.slice(0, 7)}`);
+      return 'skipped-existing';
+    }
+    if (sinceSha !== undefined && head !== pr.headSha
+      && await forge.hasMarkerComment(repo, pr.number, headMarker(head))) {
+      log(`skip ${repo}#${pr.number}: prwatch comment already exists`);
+      return 'skipped-existing';
+    }
     const rubric = await resolveRubric(dir);
     const prompt = buildPrompt(rubric, repo, pr) + (sinceSha ? reReviewNote(sinceSha) : '');
     const output = (await agent.review({ cwd: dir, prompt, timeoutMs })).trim();
@@ -61,7 +74,7 @@ export async function runReviewJob(
     const heading = sinceSha ? `**🔁 Re-review** — changes since \`${sinceSha.slice(0, 7)}\`\n\n` : '';
     await forge.postComment(
       repo, pr.number,
-      `${MARKER}\n${headMarker(pr.headSha)}\n${heading}${output}${attribution(agent.name)}`,
+      `${MARKER}\n${headMarker(head)}\n${heading}${output}${attribution(agent.name)}`,
     );
     log(`posted review for ${repo}#${pr.number}${sinceSha ? ` (re-review since ${sinceSha.slice(0, 7)})` : ''}`);
     return 'posted';

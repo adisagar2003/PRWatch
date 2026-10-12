@@ -57,6 +57,7 @@ function forge(over: Partial<ForgeAdapter> = {}): ForgeAdapter {
     clone: async (_repo, _pr, dir) => {
       await runCommand('git', ['clone', origin, dir], { cwd: tmp, timeoutMs: 30_000 });
       await git(['checkout', '-B', 'prwatch-pr', 'origin/feature'], dir);
+      return (await git(['rev-parse', 'HEAD'], dir)).trim();
     },
     hasMarkerComment: async () => false,
     postComment: async () => {},
