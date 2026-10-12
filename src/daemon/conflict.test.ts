@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { runConflictJob } from './conflict.js';
+import { unmergedPaths, hasConflictMarkers } from './git.js';
 import { runCommand } from '../run-command.js';
 import type { ForgeAdapter, PR } from '../forge/types.js';
 import type { AgentAdapter } from '../agents/index.js';
@@ -116,5 +117,27 @@ describe('runConflictJob', () => {
   it('skips when GitHub reports no conflict', async () => {
     const f = forge({ isConflicting: async () => false });
     expect(await runConflictJob(deps(f, agent(async () => '')), 'a/b', pr)).toBe('skipped');
+  });
+});
+
+describe('unmergedPaths', () => {
+  it('returns non-ASCII paths unquoted, so the marker check can open them', async () => {
+    const dir = path.join(tmp, 'uni');
+    await runCommand('git', ['init', '-b', 'main', dir], { cwd: tmp, timeoutMs: 30_000 });
+    const f = path.join(dir, 'café.txt');
+    await fs.writeFile(f, 'base\n');
+    await git(['add', '-A'], dir);
+    await git(['commit', '-m', 'base'], dir);
+    await git(['checkout', '-b', 'side'], dir);
+    await fs.writeFile(f, 'side\n');
+    await git(['commit', '-am', 'side'], dir);
+    await git(['checkout', 'main'], dir);
+    await fs.writeFile(f, 'main\n');
+    await git(['commit', '-am', 'main'], dir);
+    await expect(git(['merge', 'side'], dir)).rejects.toThrow();
+
+    const files = await unmergedPaths(dir);
+    expect(files).toEqual(['café.txt']);
+    expect(await hasConflictMarkers(dir, files)).toBe(true);
   });
 });

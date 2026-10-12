@@ -36,10 +36,12 @@ export async function mergeBase(
   }
 }
 
+/** NUL-separated (`-z`) git output: without -z git quotes non-ASCII paths, which then can't be opened. */
+const paths = (out: string) => out.split('\0').filter((p) => p !== '');
+
 /** Files git still considers unresolved. */
 export async function unmergedPaths(dir: string, git: Git = defaultGit): Promise<string[]> {
-  const out = await git(['diff', '--name-only', '--diff-filter=U'], dir);
-  return out.split('\n').filter((l) => l.trim() !== '');
+  return paths(await git(['diff', '-z', '--name-only', '--diff-filter=U'], dir));
 }
 
 const CONFLICT_MARKER = /^(<{7}|={7}|>{7})( |$)/m;
@@ -62,12 +64,12 @@ export async function changedOutside(
   allowed: string[],
   git: Git = defaultGit,
 ): Promise<string[]> {
-  const out = [
-    await git(['diff', '--name-only'], dir),
-    await git(['ls-files', '--others', '--exclude-standard'], dir),
-  ].join('\n');
+  const changed = [
+    ...paths(await git(['diff', '-z', '--name-only'], dir)),
+    ...paths(await git(['ls-files', '-z', '--others', '--exclude-standard'], dir)),
+  ];
   const ok = new Set(allowed);
-  return out.split('\n').filter((l) => l.trim() !== '' && !ok.has(l));
+  return changed.filter((p) => !ok.has(p));
 }
 
 export async function stageAll(dir: string, git: Git = defaultGit): Promise<void> {
