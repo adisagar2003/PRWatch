@@ -47,6 +47,13 @@ describe('config', () => {
   it('rejects a non-boolean chat value', async () => {
     await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ chat: 'on' }));
     await expect(loadConfig()).rejects.toThrow(/chat must be a boolean/);
+  it('defaults the review profile to chill', async () => {
+    expect((await loadConfig()).profile).toBe('chill');
+  });
+
+  it('rejects an unknown review profile', async () => {
+    await fs.writeFile(path.join(tmp, 'config.json'), JSON.stringify({ profile: 'loud' }));
+    await expect(loadConfig()).rejects.toThrow(/profile must be one of/);
   });
 
   it('rejects a non-boolean notifications value', async () => {

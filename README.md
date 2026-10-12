@@ -66,7 +66,8 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
   "agent": "claude",
   "pollIntervalMinutes": 3,
   "agentTimeoutMinutes": 10,
-  "notifications": true
+  "notifications": true,
+  "profile": "chill"
 }
 ```
 
@@ -78,6 +79,7 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
 | `agentTimeoutMinutes` | `10` | Hard timeout per review; the agent process is killed past it. |
 | `notifications` | `true` | Desktop notification when a review is posted, or when one is abandoned after its retries (macOS `osascript`, Linux `notify-send`; no-op elsewhere). Set to `false` on headless machines. |
 | `chat` | `false` | Answer `@prwatch …` questions in PR comments. See [Chat](#chat). |
+| `profile` | `"chill"` | How much the review reports: `quiet` (Critical/Major only), `chill` (the rubric as written), `assertive` (minor issues too). Applies on top of any rubric, including repo overrides. |
 
 ## Rubric
 
@@ -95,6 +97,15 @@ Tag `@prwatch` in a comment on any open PR in a watched repo and prwatch replies
 - Only repo **owners, members and collaborators** get answers, so strangers on a public repo can't run your agent. Note "members" means anyone in the repo's org, and collaborators include read-only ones.
 - Only comments written after chat was switched on are answered. Each comment is answered once; a failed answer isn't retried, so tag again.
 - The agent runs against a fresh clone of the PR with the same CLI flags as a review. It is told not to change anything, but prwatch doesn't sandbox it: your agent's own permission settings are the real limit (see [Security](#security)).
+Every review opens with a **🎯 Merge Confidence** rating (High 🟢 / Medium 🟡 / Low 🔴,
+set by the issues found) and a **🧭 Review Order** Mermaid diagram showing which
+files to read first, colored red where 🔥 Critical or ⚠️ Major issues were found. GitHub draws the diagram
+inside the comment.
+
+An un-edited `~/.prwatch/rubric.md` is upgraded to the new default automatically.
+If you edited yours (or use a repo override), copy the *Merge confidence* and
+*Review order diagram* sections from `DEFAULT_RUBRIC` in
+[`src/rubric.ts`](./src/rubric.ts) to get them.
 
 ## Security
 

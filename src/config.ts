@@ -3,6 +3,10 @@ import { configPath, prwatchHome } from './paths.js';
 
 export type AgentName = 'claude' | 'codex' | 'opencode';
 
+/** How much the review reports: quiet = blockers only, chill = the rubric as written, assertive = everything. */
+export type ReviewProfile = 'quiet' | 'chill' | 'assertive';
+export const REVIEW_PROFILES: ReviewProfile[] = ['quiet', 'chill', 'assertive'];
+
 export interface Config {
   repos: string[];
   agent: AgentName;
@@ -11,6 +15,7 @@ export interface Config {
   notifications: boolean;
   /** Answer "@prwatch …" questions from repo collaborators in PR comments. */
   chat: boolean;
+  profile: ReviewProfile;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -20,6 +25,7 @@ export const DEFAULT_CONFIG: Config = {
   agentTimeoutMinutes: 10,
   notifications: true,
   chat: false,
+  profile: 'chill',
 };
 
 function validateConfig(c: unknown): Config {
@@ -56,6 +62,9 @@ function validateConfig(c: unknown): Config {
   // Validate chat
   if (typeof merged.chat !== 'boolean') {
     throw new Error('chat must be a boolean');
+  // Validate profile
+  if (!REVIEW_PROFILES.includes(merged.profile)) {
+    throw new Error(`profile must be one of ${REVIEW_PROFILES.map((p) => `'${p}'`).join(', ')}`);
   }
 
   // Validate notifications

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ForgeAdapter, PR } from '../forge/types.js';
 import type { AgentAdapter } from '../agents/index.js';
+import type { ReviewProfile } from '../config.js';
 import { resolveRubric } from '../rubric.js';
 import { buildPrompt } from '../prompt.js';
 import { MARKER } from '../forge/github.js';
@@ -14,6 +15,7 @@ export interface JobDeps {
   cacheRoot: string;
   timeoutMs: number;
   log: (msg: string) => void;
+  profile?: ReviewProfile;
 }
 
 const MIN_OUTPUT_CHARS = 50;
@@ -25,7 +27,7 @@ function attribution(agentName: string): string {
 }
 
 export async function runReviewJob(deps: JobDeps, repo: string, pr: PR): Promise<JobResult> {
-  const { forge, agent, cacheRoot, timeoutMs, log } = deps;
+  const { forge, agent, cacheRoot, timeoutMs, log, profile } = deps;
 
   const dir = path.join(cacheRoot, `${repo.replace('/', '-')}-${pr.number}`);
 
@@ -45,7 +47,7 @@ export async function runReviewJob(deps: JobDeps, repo: string, pr: PR): Promise
     log(`reviewing ${repo}#${pr.number} "${pr.title}" with ${agent.name}`);
     await forge.clone(repo, pr.number, dir);
     const rubric = await resolveRubric(dir);
-    const prompt = buildPrompt(rubric, repo, pr);
+    const prompt = buildPrompt(rubric, repo, pr, profile);
     const output = (await agent.review({ cwd: dir, prompt, timeoutMs })).trim();
     if (output.length < MIN_OUTPUT_CHARS) {
       throw new Error(`agent output too short (${output.length} chars)`);
