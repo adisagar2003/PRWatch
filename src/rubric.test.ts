@@ -84,6 +84,11 @@ describe('resolveRubric', () => {
     expect(DEFAULT_RUBRIC).toContain('classDef risk fill:#ffebe9,stroke:#d1242f,color:#1f2328');
     expect(DEFAULT_RUBRIC).toContain('classDef clean fill:#dafbe1,stroke:#1a7f37,color:#1f2328');
     expect(DEFAULT_RUBRIC).toContain('subgraph');
+    // A clean PR must still get the rating and the reading order.
+    expect(DEFAULT_RUBRIC).not.toContain("keep only **✅ What's Good**");
+    expect(DEFAULT_RUBRIC).toContain(
+      "still include **🎯 Merge Confidence**, **🧭 Review Order** and\n**✅ What's Good**",
+    );
   });
 
   it('throws when repo rubric path is a directory', async () => {

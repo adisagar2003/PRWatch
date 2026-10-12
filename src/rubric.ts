@@ -91,7 +91,7 @@ flowchart TD
 Below the diagram, add one numbered line per node saying why to read it at that
 point.
 
-## Output structure (follow exactly, omit empty sections)
+## Output structure (follow exactly, omit empty issue categories)
 
 1. **Summary** — one short paragraph: what the PR does and your overall assessment.
 2. **🎯 Merge Confidence:** High 🟢 | Medium 🟡 | Low 🔴 — one line on why.
@@ -105,7 +105,8 @@ point.
 10. **✅ What's Good** — brief, acknowledge what's done well.
 
 If you find no issues in a category, omit its heading. If the PR is clean, say so
-in the Summary and keep only **✅ What's Good**.
+in the Summary and still include **🎯 Merge Confidence**, **🧭 Review Order** and
+**✅ What's Good**; omit only the empty issue categories.
 `;
 
 export async function resolveRubric(cloneDir: string): Promise<string> {
