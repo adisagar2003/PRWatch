@@ -51,6 +51,13 @@ export async function runConflictJob(
     }
 
     const files = await unmergedPaths(dir);
+    // Binary and delete-vs-edit conflicts leave no markers, so staging would silently keep
+    // one side and push it to someone else's branch. Those need a human.
+    const markerless = [];
+    for (const f of files) if (!(await hasConflictMarkers(dir, [f]))) markerless.push(f);
+    if (markerless.length > 0) {
+      throw new Error(`conflicts without markers need a human: ${markerless.join(', ')}`);
+    }
     await agent.review({
       cwd: dir, prompt: buildConflictPrompt(repo, pr, files), timeoutMs, write: true,
     });

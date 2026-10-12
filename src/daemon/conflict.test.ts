@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -107,6 +107,21 @@ describe('runConflictJob', () => {
   it('fails without pushing when the agent leaves conflict markers', async () => {
     const lazy = agent(async () => 'looks fine to me');
     expect(await runConflictJob(deps(forge(), lazy), 'a/b', pr)).toBe('failed');
+    expect(await pushedContent()).toBe('feature\n');
+  });
+
+  it('gives up without running the agent on conflicts that have no markers (delete vs edit)', async () => {
+    // main deletes the file the PR edits: git leaves no markers, so `add -A` would silently pick a side.
+    const work = path.join(tmp, 'work');
+    await git(['pull', '-q', 'origin', 'main'], work);
+    await git(['rm', '-q', 'file.txt'], work);
+    await fs.writeFile(path.join(work, 'other.txt'), 'keep the tree non-empty\n');
+    await git(['add', '-A'], work);
+    await git(['commit', '-m', 'delete file'], work);
+    await git(['push', '-q', 'origin', 'main'], work);
+    const review = vi.fn(async () => 'resolved');
+    expect(await runConflictJob(deps(forge(), agent(review)), 'a/b', pr)).toBe('failed');
+    expect(review).not.toHaveBeenCalled();
     expect(await pushedContent()).toBe('feature\n');
   });
 

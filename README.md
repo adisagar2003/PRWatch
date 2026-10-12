@@ -35,7 +35,7 @@ prwatch is a small daemon + TUI (terminal user interface — a keyboard-driven a
 ## Prerequisites
 
 - Node.js ≥ 20
-- `gh` (GitHub CLI), logged in: `gh auth login`
+- `gh` (GitHub CLI), logged in as a user: `gh auth login` (GitHub App / installation tokens aren't supported — prwatch only trusts its markers in comments written by the logged-in user)
 - At least one agent CLI: `claude`, `codex`, or `opencode`
 
 ## Install
@@ -94,7 +94,7 @@ branch, hands the conflicted files to your agent, and — only if no conflict ma
 reports nothing unresolved — commits the merge and pushes it to the PR branch.
 
 It gives up (and notifies) after 3 failed attempts on a given head commit — a new push from the PR
-author earns a fresh 3 — and skips PRs from forks, which you cannot push to. **This writes to other
+author earns a fresh 3 — and skips PRs from forks, which you cannot push to. Conflicts git can't mark up — binary files, or one side deleting a file the other edited — are never auto-resolved; prwatch gives up and notifies you. **This writes to other
 people's branches**: the merge commit is authored by `PRWatch`, and a bad automated resolution is a
 real way to lose someone's changes. Leave it off for repos with outside contributors.
 
