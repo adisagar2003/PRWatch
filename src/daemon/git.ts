@@ -87,3 +87,24 @@ export async function pushBranch(dir: string, headRef: string, git: Git = defaul
 export async function headSha(dir: string, git: Git = defaultGit): Promise<string> {
   return (await git(['rev-parse', 'HEAD'], dir)).trim();
 }
+
+/**
+ * A file as committed on the repo's default branch (origin/HEAD), or null if it isn't
+ * there. Used for repo settings (rubric, learnings) so a PR can't rewrite the rules
+ * its own review follows. A symlink comes back as its target path, never followed.
+ */
+export async function defaultBranchFile(
+  dir: string, file: string, git: Git = defaultGit,
+): Promise<string | null> {
+  const spec = `origin/HEAD:${file}`;
+  let type: string;
+  try {
+    type = (await git(['cat-file', '-t', spec], dir)).trim();
+  } catch {
+    // Missing file, no origin/HEAD, or not a checkout: no repo setting, use the fallback.
+    return null;
+  }
+  if (type !== 'blob') throw new Error(`${file} on the default branch is a ${type}, not a file`);
+  return git(['cat-file', 'blob', spec], dir);
+}
+

@@ -102,7 +102,7 @@ real way to lose someone's changes. Leave it off for repos with outside contribu
 ## Rubric
 
 The default rubric lives at `~/.prwatch/rubric.md` — edit it freely.
-A repo can override it by committing `.prwatch/rubric.md` at its root.
+A repo can override it by committing `.prwatch/rubric.md` at its root. The override is read from the repo's **default branch**, never from the PR being reviewed, so a PR can't rewrite the rules its own review follows.
 
 Every review opens with a **🎯 Merge Confidence** rating (High 🟢 / Medium 🟡 / Low 🔴,
 set by the issues found) and a **🧭 Review Order** Mermaid diagram showing which
@@ -118,7 +118,7 @@ If you edited yours (or use a repo override), copy the *Merge confidence* and
 
 Stop prwatch re-flagging things your team already decided. Write them as markdown bullets in:
 
-- `.prwatch/learnings.md` committed in the repo (shared with the team), and/or
+- `.prwatch/learnings.md` committed on the repo's default branch (shared with the team), and/or
 - `~/.prwatch/learnings.md` (yours, applies to every repo).
 
 ```md
@@ -126,7 +126,7 @@ Stop prwatch re-flagging things your team already decided. Write them as markdow
 - We intentionally swallow errors in `telemetry.ts`.
 ```
 
-Both are added to every review prompt (repo first, each capped at 4,000 characters). Like a repo rubric override, the repo file is read from the PR's own checkout, so a PR can change it — see Security.
+Both are added to every review prompt (repo first, each capped at 4,000 characters). Like the rubric override, the repo file comes from the default branch: a PR that adds or edits it doesn't change its own review.
 
 ## Chat
 
@@ -148,6 +148,8 @@ Watching a public repo means running your agent against untrusted input: the PR 
 - Run the agent with restrictive permission settings (e.g. no auto-approve of shell/network tools) when watching third-party repos.
 
 prwatch fences the PR title/description inside `<untrusted-pr-content>` tags in the prompt sent to your agent, but this cannot prevent an agent from reading attacker-added files in the checkout itself — that mitigation must come from your agent's own permission model.
+
+prwatch's own settings files (`.prwatch/rubric.md`, `.prwatch/learnings.md`) are read from the default branch, not the PR checkout, so a PR can't edit them to change its review or symlink them to a local secret.
 
 ## State
 
