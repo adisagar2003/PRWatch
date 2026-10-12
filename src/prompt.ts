@@ -4,7 +4,7 @@ import type { ReviewProfile } from './config.js';
 // chill adds nothing: the rubric as written is the default. Appended after the
 // rubric so it also applies to repo and home rubric overrides.
 const PROFILE_TEXT: Record<ReviewProfile, string> = {
-  quiet: `Review profile: quiet. Report only Critical and Major issues. Skip code smells, edge cases, architectural notes and praise unless they are a real bug. If there are none, say the PR looks good in one line.`,
+  quiet: `Review profile: quiet. Report only Critical and Major issues. Skip code smells, edge cases, architectural notes and praise unless they are a real bug. If there are none, keep only the Summary and say the PR looks good.`,
   chill: '',
   assertive: `Review profile: assertive. Also report minor issues: naming, small refactors, missing tests for edge cases, and unclear code. Still pair every issue with a concrete fix.`,
 };
