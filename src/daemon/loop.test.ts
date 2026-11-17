@@ -240,4 +240,26 @@ describe('tick conflict resolution', () => {
     expect(forge.postComment).not.toHaveBeenCalled();
     expect(state.repos['a/b'].reviewedHeads).toEqual({ '1': 'sha9' });
   });
+
+  describe('job history', () => {
+    it('marks the review live while it runs, then records how it ended', async () => {
+      const forge = fakeForge([mkPr(9, '2026-07-22T00:00:00Z')]);
+      const state: State = { lastTickAt: null, repos: {} };
+      let seenActive: unknown;
+      const agent: AgentAdapter = { ...okAgent, review: async () => { seenActive = structuredClone(state.active); return LONG_REVIEW; } };
+      await tick(makeDeps(forge, agent, state));
+      expect(seenActive).toMatchObject({ repo: 'a/b', pr: 9, kind: 'review', rereview: false });
+      expect(state.active).toBeNull();
+      expect(state.history).toHaveLength(1);
+      expect(state.history![0]).toMatchObject({ repo: 'a/b', pr: 9, kind: 'review', outcome: 'posted', author: 'adi' });
+    });
+
+    it('records failures too', async () => {
+      const forge = fakeForge([mkPr(4, '2026-07-22T00:00:00Z')]);
+      const badAgent: AgentAdapter = { ...okAgent, review: async () => { throw new Error('boom'); } };
+      const state: State = { lastTickAt: null, repos: {} };
+      await tick(makeDeps(forge, badAgent, state));
+      expect(state.history![0]).toMatchObject({ pr: 4, outcome: 'failed' });
+    });
+  });
 });

@@ -1,43 +1,38 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text } from 'ink';
-import { ui, StatusDot } from './ui.js';
-import { Panel, bar, sparkline } from './chrome.js';
-import { loadState, type State } from '../state.js';
-import { tailLog, parseLog, reviewHistogram, type LogEntry } from '../daemon/log.js';
+import { BBox, Segs, Spinner, cell, dot, fitSegs, theme, type Seg } from './btop.js';
+import { DAY_MS, ago, duration, inWindow, recentReviews, tally } from './data.js';
+import { loadState, type ReviewRecord, type State } from '../state.js';
+import { tailLog, parseLog, type LogEntry } from '../daemon/log.js';
 import { checkGhAuth } from '../forge/github.js';
 import { getAgent, type AgentAuth } from '../agents/index.js';
 import type { Config } from '../config.js';
 
 const REFRESH_MS = 2000;
-const BUCKET_MS = 600_000; // one graph column per 10 minutes
-const TAIL_LINES = 400; // read enough history to fill the graph
-const TWO_COL_MIN = 88;
 
-function agoLabel(iso: string): string {
-  const secs = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
-  if (secs < 90) return `${secs}s ago`;
-  const mins = Math.round(secs / 60);
-  if (mins < 90) return `${mins}m ago`;
-  return `${Math.round(mins / 60)}h ago`;
+export interface DaemonData {
+  state: State | null;
+  entries: LogEntry[];
+  error: string | null;
+  ghOk: boolean | null;
+  agentAuth: AgentAuth | null;
 }
 
-/** Live state + log, polled while the dashboard is mounted. */
-function useDaemonData(agent: Config['agent']) {
+/** Live state + log, polled every 2s; auth and scanner probes run once. */
+export function useDaemonData(agent: Config['agent']): DaemonData {
   const [state, setState] = useState<State | null>(null);
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [ghOk, setGhOk] = useState<boolean | null>(null);
   const [agentAuth, setAgentAuth] = useState<AgentAuth | null>(null);
 
-  // Both auth probes shell out and rarely change — check them once.
   useEffect(() => {
-    checkGhAuth()
-      .then(setGhOk)
-      .catch(() => setGhOk(false));
+    checkGhAuth().then(setGhOk).catch(() => setGhOk(false));
   }, []);
 
   useEffect(() => {
     let alive = true;
+    setAgentAuth(null);
     getAgent(agent)
       .checkAuth()
       .then((a) => alive && setAgentAuth(a))
@@ -57,7 +52,7 @@ function useDaemonData(agent: Config['agent']) {
           setError(null);
         })
         .catch((e) => alive && setError((e as Error).message));
-      tailLog(TAIL_LINES)
+      tailLog(100)
         .then((l) => alive && setEntries(parseLog(l)))
         .catch(() => {});
     };
@@ -72,163 +67,168 @@ function useDaemonData(agent: Config['agent']) {
   return { state, entries, error, ghOk, agentAuth };
 }
 
+export const reviewsOf = (data: DaemonData): ReviewRecord[] => recentReviews(data.state?.history ?? []);
+
+export function isRunning(state: State | null, config: Config, now: Date): boolean {
+  const t = state?.lastTickAt;
+  return !!t && now.getTime() - Date.parse(t) < config.pollIntervalMinutes * 60_000 + 30_000;
+}
+
 export function Dashboard({
-  config,
-  width,
-  logHeight,
+  config, data, selected, showLog, width, height, now,
 }: {
   config: Config;
+  data: DaemonData;
+  selected: number;
+  showLog: boolean;
   width: number;
-  logHeight: number;
+  height: number;
+  now: Date;
 }) {
-  const { state, entries, error, ghOk, agentAuth } = useDaemonData(config.agent);
-  const twoCol = width >= TWO_COL_MIN;
-  const leftWidth = twoCol ? Math.floor(width / 2) : width;
-  const rightWidth = twoCol ? width - leftWidth : width;
-
-  const lastTick = state?.lastTickAt ?? null;
-  // "Running" means it ticked within one poll interval, plus slack for a slow review.
-  const running =
-    lastTick !== null &&
-    Date.now() - Date.parse(lastTick) < config.pollIntervalMinutes * 60_000 + 30_000;
-
+  const statusH = 5 + (problem(config, data) ? 1 : 0) + (data.error ? 1 : 0);
+  const listH = Math.max(4, height - statusH);
   return (
-    <Box flexDirection="column">
-      <Box flexDirection={twoCol ? 'row' : 'column'}>
-        <Panel title="daemon" hotkey="1" width={leftWidth}>
-          <Text>
-            <StatusDot ok={running} />{' '}
-            {lastTick === null
-              ? 'never ticked · run `prw daemon`'
-              : running
-                ? `running · tick ${agoLabel(lastTick)}`
-                : `stopped · last tick ${agoLabel(lastTick)}`}
-          </Text>
-          <Text dimColor>
-            poll {config.pollIntervalMinutes}m · timeout {config.agentTimeoutMinutes}m
-          </Text>
-          {error !== null && <Text color={ui.error}>⚠ {error}</Text>}
-        </Panel>
-        <Panel title="agent" hotkey="2" width={rightWidth}>
-          <Text>
-            <StatusDot ok={ghOk} /> gh auth{' '}
-            {ghOk === null ? 'checking…' : ghOk ? 'OK' : 'NOT LOGGED IN — `gh auth login`'}
-          </Text>
-          <AgentAuthLine agent={config.agent} auth={agentAuth} />
-        </Panel>
-      </Box>
-
-      <Panel title="repos" hotkey="3" width={width}>
-        <RepoTable config={config} state={state} width={width - 4} />
-      </Panel>
-
-      <Panel title="activity" hotkey="4" width={width}>
-        <Activity entries={entries} width={width - 4} logHeight={logHeight} />
-      </Panel>
+    <Box flexDirection="column" width={width}>
+      <StatusBox config={config} data={data} width={width} height={statusH} now={now} />
+      {showLog
+        ? <LogBox data={data} width={width} height={listH} />
+        : <ReviewsBox data={data} selected={selected} width={width} height={listH} now={now} />}
     </Box>
   );
 }
 
-/**
- * Agent auth, in the same shape as the gh line. 'unknown' stays "installed" —
- * claude has no auth-status command, and claiming OK would be a guess.
- */
-function AgentAuthLine({ agent, auth }: { agent: Config['agent']; auth: AgentAuth | null }) {
-  if (auth === null)
-    return (
-      <Text>
-        <StatusDot ok={null} /> {agent} checking…
-      </Text>
-    );
-  if (auth === 'ok')
-    return (
-      <Text>
-        <StatusDot ok /> {agent} auth OK
-      </Text>
-    );
-  if (auth === 'unknown')
-    return (
-      <Text>
-        <StatusDot ok={null} /> {agent} installed <Text dimColor>(no auth check)</Text>
-      </Text>
-    );
-  const hint = auth === 'missing' ? `install ${agent}` : getAgent(agent).loginHint;
+/** The one thing to fix first, if anything is broken. */
+function problem(config: Config, data: DaemonData): string | undefined {
+  if (data.ghOk === false) return 'gh is not logged in → gh auth login';
+  const a = data.agentAuth;
+  if (a === 'missing') return `${config.agent} is not installed`;
+  if (a === 'not-authed') return `${config.agent} is not logged in → ${getAgent(config.agent).loginHint ?? `log in to ${config.agent}`}`;
+  return undefined;
+}
+
+// ── status ───────────────────────────────────────────────────────────────────
+function StatusBox({ config, data, width, height, now }: {
+  config: Config; data: DaemonData; width: number; height: number; now: Date;
+}) {
+  const inner = width - 4;
+  const lastTick = data.state?.lastTickAt ?? null;
+  const running = isRunning(data.state, config, now);
+  const a = data.agentAuth;
+  const sep: Seg = { text: '   ', color: theme.dim };
+
+  const health: Seg[] = [
+    dot(lastTick === null ? false : running),
+    { text: lastTick === null ? ' daemon not started' : running ? ' daemon up' : ` daemon stopped ${ago(lastTick, now)} ago`, color: theme.text },
+    sep,
+    dot(data.ghOk),
+    { text: ' gh', color: theme.text },
+    sep,
+    dot(a === null || a === 'unknown' ? null : a === 'ok'),
+    { text: ` ${config.agent}`, color: theme.text },
+    sep,
+    { text: 'conflict auto-fix ', color: theme.dim },
+    { text: config.autoResolveConflicts ? 'on' : 'off', color: config.autoResolveConflicts ? theme.ok : theme.dim },
+  ];
+
+  const active = data.state?.active ?? null;
+  const fix = problem(config, data);
+  const t = tally(inWindow(data.state?.history ?? [], now, DAY_MS));
+
   return (
-    <Text>
-      <StatusDot ok={false} /> {agent} {auth === 'missing' ? 'NOT FOUND' : 'NOT LOGGED IN'}
-      {hint === undefined ? '' : ` — \`${hint}\``}
-    </Text>
+    <BBox title="status" width={width} height={height} right={now.toTimeString().slice(0, 5)}>
+      <Text wrap="truncate"><Segs segs={fitSegs(health, inner)} /></Text>
+      {fix && <Text color={theme.warn} wrap="truncate">⚠ {fix}</Text>}
+      {active ? (
+        <Text wrap="truncate">
+          <Spinner color={theme.warn} />
+          <Text color={theme.warn}> {active.kind === 'conflict' ? 'resolving conflicts in' : active.rereview ? 're-reviewing' : 'reviewing'} </Text>
+          <Text color={theme.title} bold>{active.repo}#{active.pr}</Text>
+          <Text color={theme.text}> · {active.title}</Text>
+          <Text color={theme.dim}> · {duration(now.getTime() - Date.parse(active.startedAt))}</Text>
+        </Text>
+      ) : (
+        <Text color={theme.dim} wrap="truncate">
+          {lastTick === null ? 'run `prw daemon` (or press i to install it as a service) to start watching'
+            : running ? `waiting for new PRs on ${config.repos.length} repo${config.repos.length === 1 ? '' : 's'} · checks every ${config.pollIntervalMinutes}m`
+              : 'the daemon is not running · start it with `prw daemon`'}
+        </Text>
+      )}
+      <Text wrap="truncate">
+        <Text color={theme.dim}>last 24h  </Text>
+        <Text color={theme.title} bold>{t.reviews}</Text>
+        <Text color={theme.dim}> reviews · </Text>
+        <Text color={t.rereviews ? theme.text : theme.dim}>{t.rereviews} re-reviews</Text>
+        <Text color={theme.dim}> · </Text>
+        <Text color={t.resolved ? theme.ok : theme.dim}>{t.resolved} conflicts fixed</Text>
+        {t.failed > 0 && <Text color={theme.bad}> · {t.failed} failed</Text>}
+      </Text>
+      {data.error && <Text color={theme.bad} wrap="truncate">⚠ {data.error}</Text>}
+    </BBox>
   );
 }
 
-function RepoTable({
-  config,
-  state,
-  width,
-}: {
-  config: Config;
-  state: State | null;
-  width: number;
-}) {
-  if (config.repos.length === 0) return <Text dimColor>(no repos watched — press 3 to add one)</Text>;
+// ── reviews ──────────────────────────────────────────────────────────────────
+const BADGE: Record<string, Seg> = {
+  posted: { text: ' REVIEW ', color: theme.accent, bold: true },
+  rereview: { text: ' RE-REV ', color: '#e879f9', bold: true },
+  resolved: { text: ' FIXED  ', color: theme.ok, bold: true },
+  failed: { text: ' FAIL   ', color: theme.bad, bold: true },
+};
+const badgeFor = (r: ReviewRecord): Seg =>
+  r.outcome === 'posted' && r.rereview ? BADGE.rereview : BADGE[r.outcome] ?? BADGE.failed;
 
-  const nameWidth = Math.min(36, Math.max(6, ...config.repos.map((r) => r.length)));
-  const counts = config.repos.map((r) => state?.repos[r]?.reviewed.length ?? 0);
-  const peak = Math.max(1, ...counts);
-  const meterWidth = Math.max(0, width - nameWidth - 20);
-  const cell = (n: number) => String(n).padStart(5);
+function ReviewsBox({ data, selected, width, height, now }: {
+  data: DaemonData; selected: number; width: number; height: number; now: Date;
+}) {
+  const inner = width - 4;
+  const list = reviewsOf(data);
+  const rows = Math.max(0, height - 2);
+  const sel = Math.min(selected, Math.max(0, list.length - 1));
+  const top = Math.max(0, sel - rows + 1);
+  const repoW = Math.min(34, Math.max(16, Math.floor(inner * 0.3)));
+  const titleW = Math.max(0, inner - 5 - 9 - repoW - 1);
 
   return (
-    <Box flexDirection="column">
-      <Text dimColor>
-        {'repo'.padEnd(nameWidth)} {'revd'.padStart(5)} {'fail'.padStart(5)} {'retry'.padStart(5)}
-      </Text>
-      {config.repos.map((repo) => {
-        const rs = state?.repos[repo];
-        const reviewed = rs?.reviewed.length ?? 0;
-        const failed = rs?.failed.length ?? 0;
-        const pending = rs ? Object.keys(rs.retries).length : 0;
+    <BBox title="reviews" width={width} height={height} right={list.length ? `${sel + 1}/${list.length}` : ''}>
+      {list.length === 0 && <Text color={theme.dim}>no reviews yet · new PRs on watched repos show up here</Text>}
+      {list.slice(top, top + rows).map((r, i) => {
+        const on = top + i === sel;
+        const bg = on ? theme.selBg : undefined;
+        const fg = (c: string) => (on ? theme.selFg : c);
+        const segs: Seg[] = [
+          { text: cell(ago(r.at, now), 5), color: fg(theme.dim), bg },
+          { ...badgeFor(r), bg, ...(on ? { color: theme.selFg } : {}) },
+          { text: ' ', bg },
+          { text: cell(`${r.repo}#${r.pr}`, repoW) + ' ', color: fg(theme.title), bg, bold: on },
+          { text: cell(r.title, titleW), color: fg(theme.text), bg },
+        ];
         return (
-          <Text key={repo}>
-            {repo.slice(0, nameWidth).padEnd(nameWidth)}{' '}
-            <Text color={ui.success}>{cell(reviewed)}</Text>{' '}
-            <Text color={failed > 0 ? ui.error : undefined}>{cell(failed)}</Text>{' '}
-            <Text color={pending > 0 ? ui.warn : undefined}>{cell(pending)}</Text>{' '}
-            <Text color={ui.success}>{bar(reviewed, peak, meterWidth)}</Text>
+          <Text key={`${r.repo}#${r.pr}@${r.at}`} wrap="truncate">
+            <Segs segs={fitSegs(segs, inner)} />
           </Text>
         );
       })}
-    </Box>
+    </BBox>
   );
 }
 
-function Activity({
-  entries,
-  width,
-  logHeight,
-}: {
-  entries: LogEntry[];
-  width: number;
-  logHeight: number;
-}) {
-  const buckets = Math.max(10, Math.min(60, width - 24));
-  const histogram = reviewHistogram(entries, new Date(), BUCKET_MS, buckets);
-  const posted = histogram.reduce((a, b) => a + b, 0);
-  const recent = entries.slice(-logHeight);
-
+// ── log ──────────────────────────────────────────────────────────────────────
+function LogBox({ data, width, height }: { data: DaemonData; width: number; height: number }) {
+  const recent = data.entries.slice(-Math.max(0, height - 2));
+  const tone = (t: string) =>
+    t.startsWith('FAILED') || t.includes('error') ? theme.bad
+      : t.startsWith('posted') || t.startsWith('resolved') ? theme.ok
+        : t.startsWith('reviewing') ? theme.warn
+          : theme.text;
   return (
-    <Box flexDirection="column">
-      <Text>
-        <Text dimColor>reviews/10m </Text>
-        <Text color={ui.accent}>{sparkline(histogram)}</Text>
-        <Text dimColor> {posted} in {(buckets * BUCKET_MS) / 3_600_000 | 0}h</Text>
-      </Text>
-      {recent.length === 0 && <Text dimColor>(no activity logged yet)</Text>}
+    <BBox title="log" width={width} height={height} right="~/.prwatch/logs/daemon.log">
+      {recent.length === 0 && <Text color={theme.dim}>nothing logged yet</Text>}
       {recent.map((e, i) => (
-        <Text key={i} dimColor wrap="truncate-end">
-          <Text color={ui.border}>{e.at.toTimeString().slice(0, 8)}</Text> {e.text.slice(0, width - 10)}
+        <Text key={i} wrap="truncate">
+          <Text color={theme.dim}>{e.at.toTimeString().slice(0, 8)} </Text>
+          <Text color={tone(e.text)}>{e.text}</Text>
         </Text>
       ))}
-    </Box>
+    </BBox>
   );
 }

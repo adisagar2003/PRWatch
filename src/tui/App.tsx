@@ -3,203 +3,160 @@ import { Box, Text, useApp, useInput } from 'ink';
 import { Menu } from './Menu.js';
 import { Banner } from './Banner.js';
 import { RepoPicker } from './RepoPicker.js';
-import { Dashboard } from './Dashboard.js';
-import { Panel, useTerminalWidth } from './chrome.js';
-import { ui, Footer } from './ui.js';
+import { Dashboard, useDaemonData, reviewsOf } from './Dashboard.js';
+import { BBox, Keys, theme, useNow, useTerminalSize } from './btop.js';
+import { prUrl } from './data.js';
+import { openUrl } from './open.js';
 import { saveConfig, type Config, type AgentName } from '../config.js';
 import { detectInstalledAgents } from '../agents/index.js';
 
 type Screen = 'dashboard' | 'repos' | 'repos-add' | 'agent' | 'service';
 
-const LOG_HEIGHT = 8;
-const LOG_HEIGHT_EXPANDED = 20;
-
-export function App({ initialConfig }: { initialConfig: Config }) {
+export function App({
+  initialConfig,
+  open = openUrl,
+}: {
+  initialConfig: Config;
+  /** Injected in tests so ⏎ doesn't launch a browser. */
+  open?: (url: string) => void;
+}) {
   const { exit } = useApp();
   const [config, setConfig] = useState(initialConfig);
   const [screen, setScreen] = useState<Screen>('dashboard');
   const [message, setMessage] = useState('');
-  const [expanded, setExpanded] = useState(false);
-  const width = Math.max(40, useTerminalWidth() - 2);
+  const [selected, setSelected] = useState(0);
+  const [showLog, setShowLog] = useState(false);
+  const { cols, rows } = useTerminalSize();
+  const now = useNow(1000);
+  const data = useDaemonData(config.agent);
+  const width = Math.max(40, cols);
+  const bodyHeight = Math.max(8, rows - 2);
+  const list = reviewsOf(data);
+  const empty = config.repos.length === 0 && list.length === 0;
 
-  const update = (patch: Partial<Config>) => {
-    const next = { ...config, ...patch };
+  const update = (p: Partial<Config>) => {
+    const next = { ...config, ...p };
     setConfig(next);
     saveConfig(next).catch((e) => setMessage(`could not save config: ${(e as Error).message}`));
   };
 
   useInput((input, key) => {
-    if (key.escape && screen !== 'dashboard') {
-      setScreen('dashboard');
-      return;
+    if (screen !== 'dashboard') {
+      if (key.escape) setScreen('dashboard');
+      return; // sub-screens own their keys
     }
-    if (screen !== 'dashboard') return; // sub-screens own their own keys
     setMessage('');
-    if (input === '1') setScreen('service');
-    else if (input === '2') setScreen('agent');
-    else if (input === '3') setScreen('repos');
-    else if (input === '4') setExpanded((e) => !e);
-    else if (input === '5') update({ autoResolveConflicts: !config.autoResolveConflicts });
+    const max = Math.max(0, list.length - 1);
+    if (key.upArrow || input === 'k') setSelected((s) => Math.max(0, Math.min(s, max) - 1));
+    else if (key.downArrow || input === 'j') setSelected((s) => Math.min(max, s + 1));
+    else if (key.return && !showLog) {
+      const r = list[Math.min(selected, max)];
+      if (r) {
+        open(prUrl(r.repo, r.pr));
+        setMessage(`opened ${r.repo}#${r.pr} in your browser`);
+      }
+    } else if (input === 'l') setShowLog((v) => !v);
+    else if (input === 'r') setScreen('repos');
+    else if (input === 'a') setScreen('agent');
+    else if (input === 'c') {
+      update({ autoResolveConflicts: !config.autoResolveConflicts });
+      setMessage(`conflict auto-fix ${config.autoResolveConflicts ? 'off' : 'on'}`);
+    }
+    else if (input === 'i') setScreen('service');
     else if (input === 'q') exit();
   });
 
-  return (
-    <Box flexDirection="column" padding={1}>
-      <Text>
-        <Text color={ui.accent} bold>
-          👁 prwatch
-        </Text>
-        <Text dimColor> · local PR reviewer · </Text>
-        <Text color={ui.info}>{config.repos.length}</Text>
-        <Text dimColor> repo{config.repos.length === 1 ? '' : 's'} · </Text>
-        <Text color={ui.info}>{config.agent}</Text>
-      </Text>
-      {message !== '' && <Text color={ui.warn}>⚠ {message}</Text>}
+  const keys: Array<[string, string]> =
+    screen !== 'dashboard' ? [['↑↓', 'move'], ['⏎', 'select'], ['esc', 'back']]
+      : empty ? [['r', 'add a repo'], ['a', 'agent'], ['q', 'quit']]
+        : [['↑↓', 'move'], ['⏎', 'open PR'], ['l', showLog ? 'reviews' : 'log'], ['r', 'repos'], ['a', 'agent'], ['c', 'auto-fix'], ['i', 'service'], ['q', 'quit']];
 
-      {screen === 'dashboard' &&
-        (config.repos.length === 0 ? (
-          <Box flexDirection="column" marginTop={1}>
-            <Banner />
-            <Text dimColor>nothing watched yet — press 3 to add a repo</Text>
+  return (
+    <Box flexDirection="column" width={width} height={rows}>
+      <Box width={width} justifyContent="space-between">
+        <Text wrap="truncate">
+          <Text color={theme.accent} bold> ◉ prwatch</Text>
+          {message !== '' && <Text color={theme.warn}>   {message}</Text>}
+        </Text>
+        <Text color={theme.dim}>
+          {config.repos.length} repo{config.repos.length === 1 ? '' : 's'} · {config.agent} · {config.profile}{' '}
+        </Text>
+      </Box>
+
+      {screen === 'dashboard' && (empty ? (
+        <BBox title="welcome" width={width} height={bodyHeight}>
+          <Box flexDirection="column" alignItems="center" justifyContent="center" height={bodyHeight - 2}>
+            <Banner width={width - 6} />
+            <Text> </Text>
+            <Text color={theme.text}>
+              nothing watched yet · press <Text color={theme.key} bold>r</Text> to add a repo, then run{' '}
+              <Text color={theme.title} bold>prw daemon</Text>
+            </Text>
           </Box>
-        ) : (
-          <Dashboard
-            config={config}
-            width={width}
-            logHeight={expanded ? LOG_HEIGHT_EXPANDED : LOG_HEIGHT}
-          />
-        ))}
+        </BBox>
+      ) : (
+        <Dashboard config={config} data={data} selected={selected} showLog={showLog} width={width} height={bodyHeight} now={now} />
+      ))}
+
       {screen === 'repos' && (
-        <ReposScreen
-          repos={config.repos}
-          width={width}
-          onAdd={() => setScreen('repos-add')}
-          onRemove={(repo) => update({ repos: config.repos.filter((r) => r !== repo) })}
-        />
+        <BBox title="repos" width={width} height={bodyHeight}>
+          <Text color={theme.dim}>⏎ on a repo stops watching it</Text>
+          <Menu
+            items={[...config.repos.map((r) => `remove ${r}`), 'add a repo']}
+            onSelect={(item) => {
+              if (item === 'add a repo') setScreen('repos-add');
+              else update({ repos: config.repos.filter((r) => r !== item.replace('remove ', '')) });
+            }}
+          />
+        </BBox>
       )}
       {screen === 'repos-add' && (
-        <RepoPicker
-          existing={config.repos}
-          onDone={(repo) => {
-            if (repo && !config.repos.includes(repo)) update({ repos: [...config.repos, repo] });
-            setScreen('repos');
-          }}
-        />
+        <BBox title="add a repo" width={width} height={bodyHeight}>
+          <RepoPicker
+            existing={config.repos}
+            onDone={(repo) => {
+              if (repo && !config.repos.includes(repo)) update({ repos: [...config.repos, repo] });
+              setScreen('repos');
+            }}
+          />
+        </BBox>
       )}
       {screen === 'agent' && (
-        <AgentScreen
-          width={width}
-          onPick={(name) => {
-            update({ agent: name });
-            setScreen('dashboard');
-          }}
-        />
+        <BBox title="agent" width={width} height={bodyHeight}>
+          <AgentPicker onPick={(name) => { update({ agent: name }); setScreen('dashboard'); }} />
+        </BBox>
       )}
       {screen === 'service' && (
-        <ServiceScreen
-          width={width}
-          onDone={(msg) => {
-            setMessage(msg);
-            setScreen('dashboard');
-          }}
-        />
+        <BBox title="service" width={width} height={bodyHeight}>
+          <ServiceInstaller onDone={(msg) => { setMessage(msg); setScreen('dashboard'); }} />
+        </BBox>
       )}
 
-      {screen === 'dashboard' ? (
-        <Footer
-          hints={[
-            ['1', 'service'],
-            ['2', 'agent'],
-            ['3', 'repos'],
-            ['4', expanded ? 'shrink log' : 'expand log'],
-            ['5', `auto-fix conflicts: ${config.autoResolveConflicts ? 'on' : 'off'}`],
-            ['q', 'quit'],
-          ]}
-        />
-      ) : (
-        <Footer
-          hints={[
-            ['↑↓', 'navigate'],
-            ['⏎', 'select'],
-            ['esc', 'back'],
-          ]}
-        />
-      )}
+      <Keys keys={keys} />
     </Box>
   );
 }
 
-function ReposScreen({
-  repos,
-  width,
-  onAdd,
-  onRemove,
-}: {
-  repos: string[];
-  width: number;
-  onAdd: () => void;
-  onRemove: (repo: string) => void;
-}) {
-  const items = [...repos.map((r) => `remove ${r}`), 'add a repo'];
-  return (
-    <Panel title="repos" width={width}>
-      <Text dimColor>enter to remove a repo, or add a new one</Text>
-      <Menu
-        items={items}
-        onSelect={(item) => {
-          if (item === 'add a repo') onAdd();
-          else onRemove(item.replace('remove ', ''));
-        }}
-      />
-    </Panel>
-  );
-}
-
-function AgentScreen({ width, onPick }: { width: number; onPick: (name: AgentName) => void }) {
+function AgentPicker({ onPick }: { onPick: (name: AgentName) => void }) {
   const [installed, setInstalled] = useState<AgentName[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-
   useEffect(() => {
     detectInstalledAgents()
       .then((a) => setInstalled(a.map((x) => x.name)))
       .catch((e) => setError((e as Error).message));
   }, []);
-
-  if (error !== null)
-    return (
-      <Panel title="agent" width={width} color={ui.error}>
-        <Text color={ui.error}>⚠ agent detection failed: {error}</Text>
-      </Panel>
-    );
-  if (installed === null)
-    return (
-      <Panel title="agent" width={width}>
-        <Text dimColor>detecting installed agents…</Text>
-      </Panel>
-    );
-  if (installed.length === 0)
-    return (
-      <Panel title="agent" width={width} color={ui.error}>
-        <Text color={ui.error}>⚠ No agents found. Install claude, codex, or opencode first.</Text>
-      </Panel>
-    );
-  return (
-    <Panel title="agent" width={width}>
-      <Menu items={installed} onSelect={(item) => onPick(item as AgentName)} />
-    </Panel>
-  );
+  if (error !== null) return <Text color={theme.bad}>⚠ agent detection failed: {error}</Text>;
+  if (installed === null) return <Text color={theme.dim}>detecting installed agents…</Text>;
+  if (installed.length === 0) return <Text color={theme.bad}>⚠ No agents found. Install claude, codex, or opencode first.</Text>;
+  return <Menu items={installed} onSelect={(item) => onPick(item as AgentName)} />;
 }
 
-function ServiceScreen({ width, onDone }: { width: number; onDone: (msg: string) => void }) {
+function ServiceInstaller({ onDone }: { onDone: (msg: string) => void }) {
   useEffect(() => {
     void import('../service.js')
       .then((m) => m.installService())
       .then((p) => onDone(`service installed: ${p}`))
       .catch((e) => onDone(`service install failed: ${(e as Error).message}`));
   }, []);
-  return (
-    <Panel title="service" width={width}>
-      <Text dimColor>installing service…</Text>
-    </Panel>
-  );
+  return <Text color={theme.dim}>installing service…</Text>;
 }

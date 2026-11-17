@@ -2,6 +2,33 @@ import fs from 'node:fs/promises';
 import { statePath, prwatchHome } from './paths.js';
 import type { PR } from './forge/types.js';
 
+export type ReviewOutcome = 'posted' | 'failed' | 'skipped' | 'resolved';
+
+/** One finished job (a review, or a conflict fix), newest last. Drives the TUI's table and graphs. */
+export interface ReviewRecord {
+  repo: string;
+  pr: number;
+  title: string;
+  author: string;
+  kind: 'review' | 'conflict';
+  /** ISO time the job finished. */
+  at: string;
+  durationMs: number;
+  outcome: ReviewOutcome;
+  rereview: boolean;
+  fromFork?: boolean;
+}
+
+/** The job the daemon is running right now, so the TUI can show it live. */
+export interface ActiveJob {
+  repo: string;
+  pr: number;
+  title: string;
+  kind: 'review' | 'conflict';
+  startedAt: string;
+  rereview: boolean;
+}
+
 export interface RepoState {
   watchStartedAt: string;
   reviewed: number[];
@@ -20,9 +47,19 @@ export interface RepoState {
 export interface State {
   lastTickAt: string | null;
   repos: Record<string, RepoState>;
+  history?: ReviewRecord[];
+  active?: ActiveJob | null;
 }
 
 export const MAX_ATTEMPTS = 3;
+export const HISTORY_MAX = 500;
+
+/** Append a finished job, keeping only the newest HISTORY_MAX. */
+export function recordHistory(s: State, rec: ReviewRecord): void {
+  const h = (s.history ??= []);
+  h.push(rec);
+  if (h.length > HISTORY_MAX) h.splice(0, h.length - HISTORY_MAX);
+}
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
