@@ -58,16 +58,13 @@ const app = (over = {}, open = vi.fn()) => ({
 });
 
 describe('App dashboard', () => {
-  it('draws btop boxes with superscript hotkeys in the top border', async () => {
+  it('shows a status box and a reviews box', async () => {
     await seed();
     const { lastFrame } = app();
     await settle();
     const f = plain(lastFrame());
-    expect(f).toMatch(/╭─¹activity─+/);
-    expect(f).toContain('²system');
-    expect(f).toContain('³repos');
-    expect(f).toContain('⁴reviews');
-    expect(f).toContain('⁵log');
+    expect(f).toMatch(/╭─ status ─+/);
+    expect(f).toMatch(/╭─ reviews ─+/);
   });
 
   it('never draws past the terminal width', async () => {
@@ -77,7 +74,7 @@ describe('App dashboard', () => {
     for (const line of plain(lastFrame()).split('\n')) expect([...line].length).toBeLessThanOrEqual(100);
   });
 
-  it('lists jobs newest first with result badges', async () => {
+  it('lists jobs newest first with what happened', async () => {
     await seed();
     const { lastFrame } = app();
     await settle();
@@ -87,83 +84,72 @@ describe('App dashboard', () => {
     expect(f.indexOf('a/b#2')).toBeLessThan(f.indexOf('a/b#1'));
   });
 
+  it('summarises the last 24 hours', async () => {
+    await seed();
+    const { lastFrame } = app();
+    await settle();
+    expect(plain(lastFrame())).toContain('1 reviews · 0 re-reviews · 1 conflicts fixed');
+  });
+
   it('shows the review running right now', async () => {
     await seed({ active: { repo: 'a/b', pr: 3, title: 'Refund endpoint', kind: 'conflict', startedAt: iso(1), rereview: false } });
     const { lastFrame } = app();
     await settle();
-    const f = plain(lastFrame());
-    expect(f).toContain('a/b#3');
-    expect(f).toContain('MERGING');
+    expect(plain(lastFrame())).toMatch(/resolving conflicts in a\/b#3 · Refund endpoint/);
   });
 
-  it('reports system health: daemon, gh, agent and feature flags', async () => {
+  it('reports health and whether conflict auto-fix is on', async () => {
     await seed();
-    const { lastFrame } = app({ agent: 'codex', autoResolveConflicts: true, chat: false });
+    const { lastFrame } = app({ agent: 'codex', autoResolveConflicts: false });
     await settle();
     const f = plain(lastFrame());
-    expect(f).toMatch(/daemon\s+up/);
-    expect(f).toMatch(/gh\s+logged in/);
-    expect(f).toMatch(/codex\s+auth OK/);
-    expect(f).toContain('◆ auto-fix');
-    expect(f).toContain('◇ chat');
+    expect(f).toContain('● daemon up');
+    expect(f).toContain('● gh');
+    expect(f).toContain('● codex');
+    expect(f).toContain('conflict auto-fix off');
   });
 
-  it('toggles conflict auto-fix with c', async () => {
+  it('toggles conflict auto-fix with c and saves it', async () => {
     await seed();
     const { stdin, lastFrame } = app({ autoResolveConflicts: false });
     await settle();
     stdin.write('c');
     await settle(80);
-    const f = plain(lastFrame());
-    expect(f).toContain('auto-fix conflicts on');
-    expect(f).toContain('◆ auto-fix');
+    expect(plain(lastFrame())).toContain('conflict auto-fix on');
     const saved = JSON.parse(await fs.readFile(path.join(tmp, 'config.json'), 'utf8'));
     expect(saved.autoResolveConflicts).toBe(true);
   });
 
-  it('names the login command when the agent is logged out', async () => {
+  it('says how to fix a logged-out agent', async () => {
     auth = 'not-authed';
     await seed();
     const { lastFrame } = app({ agent: 'codex' });
     await settle();
-    expect(plain(lastFrame())).toContain('codex login');
+    expect(plain(lastFrame())).toContain('codex is not logged in → codex login');
   });
 
   it('moves the cursor and opens the selected PR on enter', async () => {
     await seed();
     const { stdin, open } = app();
     await settle();
-    stdin.write(`${ESC}[B`); // down
+    stdin.write(`${ESC}[B`);
     await settle(50);
     stdin.write('\r');
     await settle(50);
     expect(open).toHaveBeenCalledWith('https://github.com/a/b/pull/1');
   });
 
-  it('filters reviews as you type', async () => {
+  it('swaps the reviews for the log on l', async () => {
     await seed();
+    await fs.mkdir(path.join(tmp, 'logs'), { recursive: true });
+    await fs.writeFile(path.join(tmp, 'logs', 'daemon.log'), `[${iso(1)}] posted review for a/b#2\n`);
     const { stdin, lastFrame } = app();
     await settle();
-    stdin.write('f');
-    await settle(30);
-    for (const ch of 'lodash') {
-      stdin.write(ch);
-      await settle(20);
-    }
+    stdin.write('l');
     await settle(50);
     const f = plain(lastFrame());
-    expect(f).toContain('filter lodash');
-    expect(f).toContain('a/b#2');
-    expect(f).not.toContain('a/b#1 ');
-  });
-
-  it('hides a box with its number key', async () => {
-    await seed();
-    const { stdin, lastFrame } = app();
-    await settle();
-    stdin.write('1');
-    await settle(50);
-    expect(plain(lastFrame())).not.toContain('activity');
+    expect(f).toMatch(/╭─ log ─/);
+    expect(f).toContain('posted review for a/b#2');
   });
 
   it('opens the repos screen on r and returns on esc', async () => {
@@ -175,10 +161,10 @@ describe('App dashboard', () => {
     expect(plain(lastFrame())).toContain('add a repo');
     stdin.write(ESC);
     await settle(50);
-    expect(plain(lastFrame())).toContain('⁴reviews');
+    expect(plain(lastFrame())).toContain('─ reviews ─');
   });
 
-  it('shows the eye splash when nothing is watched yet', async () => {
+  it('shows the splash when nothing is watched yet', async () => {
     const { lastFrame } = render(<App initialConfig={{ ...DEFAULT_CONFIG }} open={vi.fn()} />);
     await settle();
     const f = plain(lastFrame());

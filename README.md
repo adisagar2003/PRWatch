@@ -54,19 +54,15 @@ prw service install   # optional: run at login via launchd/systemd
 
 ### TUI keys
 
-The dashboard is full-screen, in the style of [btop](https://github.com/aristocratos/btop):
+The dashboard shows health and what the daemon is doing up top, and your recent reviews below.
 
 | Key | Does |
 |---|---|
-| `↑` `↓` / `j` `k` | Move through the reviews table |
+| `↑` `↓` | Move through reviews |
 | `⏎` | Open the selected PR in your browser |
-| `f` or `/` | Filter reviews as you type (`esc` clears) |
-| `s` | Cycle the sort: time, repo, slowest |
-| `w` | Graph window: 1h / 6h / 24h / 7d |
-| `1`–`5` | Show or hide a panel |
-| `l` | Taller log |
-| `r` / `a` / `i` | Repos, agent, install service |
-| `c` | Toggle auto-resolving merge conflicts |
+| `l` | Switch between reviews and the daemon log |
+| `r` / `a` / `i` | Repos, agent, install as a service |
+| `c` | Turn conflict auto-fix on or off |
 | `q` | Quit |
 
 <img width="1502" alt="prwatch TUI" src="https://github.com/user-attachments/assets/4c1b8abc-f259-4fc9-955a-3e49e5c229df" />
