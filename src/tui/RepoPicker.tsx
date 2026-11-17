@@ -4,7 +4,6 @@ import TextInput from 'ink-text-input';
 import { listUserRepos } from '../forge/github.js';
 import { fuzzyFilter } from './fuzzy.js';
 import { ui } from './ui.js';
-import { Panel, useTerminalWidth } from './chrome.js';
 
 const VISIBLE = 8;
 
@@ -21,7 +20,6 @@ export function RepoPicker({
 }) {
   const [repos, setRepos] = useState<string[] | null>(null); // null = loading
   const [failed, setFailed] = useState(false);
-  const width = Math.max(40, useTerminalWidth() - 2);
 
   useEffect(() => {
     let alive = true;
@@ -41,9 +39,9 @@ export function RepoPicker({
   if (failed) return <ManualEntry reason="couldn't list your repos via gh" onDone={onDone} />;
   if (repos === null)
     return (
-      <Panel title="add a repo" width={width}>
+      <Box flexDirection="column">
         <Text dimColor>loading your repos…</Text>
-      </Panel>
+      </Box>
     );
   if (repos.length === 0)
     return <ManualEntry reason="no new repos found to pick from" onDone={onDone} />;
@@ -52,7 +50,6 @@ export function RepoPicker({
 }
 
 function Picker({ repos, onDone }: { repos: string[]; onDone: (repo: string | null) => void }) {
-  const width = Math.max(40, useTerminalWidth() - 2);
   const [filter, setFilter] = useState('');
   const [cursor, setCursor] = useState(0);
 
@@ -74,7 +71,8 @@ function Picker({ repos, onDone }: { repos: string[]; onDone: (repo: string | nu
   const window = matches.slice(start, start + VISIBLE);
 
   return (
-    <Panel title={`add a repo · ${matches.length}/${repos.length}`} width={width}>
+    <Box flexDirection="column">
+      <Text color={ui.info}>{matches.length}/{repos.length} repos</Text>
       <Box>
         <Text color={ui.info}>filter </Text>
         <Text dimColor>❯ </Text>
@@ -90,21 +88,20 @@ function Picker({ repos, onDone }: { repos: string[]; onDone: (repo: string | nu
           </Text>
         );
       })}
-    </Panel>
+    </Box>
   );
 }
 
 function ManualEntry({ reason, onDone }: { reason: string; onDone: (repo: string | null) => void }) {
-  const width = Math.max(40, useTerminalWidth() - 2);
   const [value, setValue] = useState('');
   return (
-    <Panel title="add a repo" width={width} color={ui.warn}>
+    <Box flexDirection="column">
       <Text color={ui.warn}>⚠ {reason} — enter it manually</Text>
       <Box>
         <Text color={ui.info}>owner/name </Text>
         <Text dimColor>❯ </Text>
         <TextInput value={value} onChange={setValue} onSubmit={(v) => onDone(v.trim() || null)} />
       </Box>
-    </Panel>
+    </Box>
   );
 }

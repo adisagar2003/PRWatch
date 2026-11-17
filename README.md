@@ -52,6 +52,23 @@ prw daemon            # start the watcher in the foreground (tmux-friendly)
 prw service install   # optional: run at login via launchd/systemd
 ```
 
+### TUI keys
+
+The dashboard is full-screen, in the style of [btop](https://github.com/aristocratos/btop):
+
+| Key | Does |
+|---|---|
+| `↑` `↓` / `j` `k` | Move through the reviews table |
+| `⏎` | Open the selected PR in your browser |
+| `f` or `/` | Filter reviews as you type (`esc` clears) |
+| `s` | Cycle the sort: time, repo, slowest |
+| `w` | Graph window: 1h / 6h / 24h / 7d |
+| `1`–`5` | Show or hide a panel |
+| `l` | Taller log |
+| `r` / `a` / `i` | Repos, agent, install service |
+| `c` | Toggle auto-resolving merge conflicts |
+| `q` | Quit |
+
 <img width="1502" alt="prwatch TUI" src="https://github.com/user-attachments/assets/4c1b8abc-f259-4fc9-955a-3e49e5c229df" />
 
 Only PRs opened **after** you start watching a repo are reviewed — no backlog spam. Each PR is reviewed when it opens, then **re-reviewed after each push**, covering only the new commits (turn off with `"reReviewOnPush": false`). Every comment carries hidden `<!-- prwatch -->` and `<!-- prwatch head=SHA -->` markers, so running twice can't post a second review of the same commit. prwatch's own conflict-resolution merges never trigger a re-review.
@@ -88,7 +105,7 @@ Only PRs opened **after** you start watching a repo are reviewed — no backlog 
 
 ## Auto-resolving merge conflicts
 
-Off by default. Turn it on with `5` in the TUI, or `"autoResolveConflicts": true`.
+Off by default. Turn it on with `c` in the TUI, or `"autoResolveConflicts": true`.
 
 Each tick, for every watched PR GitHub reports as conflicting, prwatch clones it, merges the base
 branch, hands the conflicted files to your agent, and — only if no conflict markers survive and git

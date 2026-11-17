@@ -3,7 +3,7 @@ import { loadConfig, type Config } from '../config.js';
 import {
   loadState, saveState as persistState, ensureRepoState,
   recordReviewed, recordFailure, recordConflictFailure, pruneConflictAttempts,
-  backfillReviewedHeads, markOwnPush, type State,
+  backfillReviewedHeads, markOwnPush, recordHistory, type State,
 } from '../state.js';
 import { ensureHomeRubric } from '../rubric.js';
 import { GitHubForge, checkGhAuth } from '../forge/github.js';
@@ -54,10 +54,13 @@ export async function tick(deps: TickDeps): Promise<void> {
       // as a first review. Per-head failure counters (like conflictAttempts) if that bites.
       let reviewedHead = pr.headSha;
       const onReviewedHead = (sha: string) => { reviewedHead = sha; };
+      const rereview = sinceSha !== undefined;
+      const started = await startJob(deps, repo, pr, 'review', rereview);
       const result = await runReviewJob(
         { forge, agent, cacheRoot, timeoutMs, log, onReviewedHead, profile: config.profile,
           lineComments: config.lineComments }, repo, pr, sinceSha,
       );
+      finishJob(deps, repo, pr, 'review', rereview, started, result === 'skipped-existing' || result === 'skipped-closed' ? 'skipped' : result);
       if (result === 'failed') {
         recordFailure(rs, pr.number);
         // Only once we've given up — retries would otherwise notify MAX_ATTEMPTS times.
@@ -77,9 +80,13 @@ export async function tick(deps: TickDeps): Promise<void> {
     pruneConflictAttempts(rs, prs);
     for (const pr of prsNeedingConflictCheck(prs, rs)) {
       const onPushed = (before: string, after: string) => markOwnPush(rs, pr.number, before, after);
+      const started = await startJob(deps, repo, pr, 'conflict', false);
       const result = await runConflictJob(
         { forge, agent, cacheRoot, timeoutMs, log, onPushed }, repo, pr,
       );
+      // A clean PR is checked every tick: only log jobs that did something.
+      if (result === 'skipped') deps.state.active = null;
+      else finishJob(deps, repo, pr, 'conflict', false, started, result);
       if (result === 'failed') {
         recordConflictFailure(rs, pr.number, pr.headSha);
         announce(`could not resolve conflicts in ${repo}#${pr.number} · ${pr.title}`);
@@ -92,6 +99,26 @@ export async function tick(deps: TickDeps): Promise<void> {
 
   state.lastTickAt = now().toISOString();
   await saveState(state);
+}
+
+/** Mark a job live for the TUI. Returns its start time. */
+async function startJob(deps: TickDeps, repo: string, pr: PR, kind: 'review' | 'conflict', rereview: boolean): Promise<Date> {
+  const started = deps.now();
+  deps.state.active = { repo, pr: pr.number, title: pr.title, kind, startedAt: started.toISOString(), rereview };
+  await deps.saveState(deps.state);
+  return started;
+}
+
+function finishJob(
+  deps: TickDeps, repo: string, pr: PR, kind: 'review' | 'conflict', rereview: boolean,
+  started: Date, outcome: 'posted' | 'failed' | 'skipped' | 'resolved',
+): void {
+  const at = deps.now();
+  deps.state.active = null;
+  recordHistory(deps.state, {
+    repo, pr: pr.number, title: pr.title, author: pr.author, fromFork: pr.fromFork, kind,
+    at: at.toISOString(), durationMs: at.getTime() - started.getTime(), outcome, rereview,
+  });
 }
 
 const CHAT_OVERLAP_MS = 60_000;
